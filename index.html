@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Immaculate Grid Tracker</title>
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      import React, { useState, useEffect } from "react";
+      import {
+        Trophy,
+        Plus,
+        ArrowLeft,
+        Calendar,
+        TrendingDown,
+        Hash,
+      } from "lucide-react";
+
+      const ImmaculateGridTracker = () => {
+        const [view, setView] = useState("leaderboard");
+        const [selectedPlayer, setSelectedPlayer] = useState(null);
+        const [players, setPlayers] = useState({});
+        const [showAddScore, setShowAddScore] = useState(false);
+        const [newScore, setNewScore] = useState({
+          name: "",
+          date: new Date().toISOString().split("T")[0],
+          score: "",
+        });
+
+        useEffect(() => {
+          loadData();
+        }, []);
+
+        const loadData = async () => {
+          try {
+            const result = await window.storage.get("immaculate-grid-players");
+            if (result && result.value) {
+              setPlayers(JSON.parse(result.value));
+            }
+          } catch (error) {
+            console.log("No existing data found");
+          }
+        };
+
+        const saveData = async (data) => {
+          try {
+            await window.storage.set(
+              "immaculate-grid-players",
+              JSON.stringify(data)
+            );
+          } catch (error) {
+            console.error("Failed to save data:", error);
+          }
+        };
+
+        const handleAddScore = () => {
+          if (!newScore.name || !newScore.date || !newScore.score) {
+            alert("Please fill in all fields");
+            return;
+          }
+
+          const score = parseInt(newScore.score);
+          if (isNaN(score) || score < 0 || score > 900) {
+            alert("Score must be a number between 0 and 900");
+            return;
+          }
+
+          const updatedPlayers = { ...players };
+          if (!updatedPlayers[newScore.name]) {
+            updatedPlayers[newScore.name] = {};
+          }
+
+          if (updatedPlayers[newScore.name][newScore.date]) {
+            if (
+              !confirm(
+                `${newScore.name} already has a score for ${newScore.date}. Overwrite?`
+              )
+            ) {
+              return;
+            }
+          }
+
+          updatedPlayers[newScore.name][newScore.date] = score;
+          setPlayers(updatedPlayers);
+          saveData(updatedPlayers);
+
+          setNewScore({
+            name: "",
+            date: new Date().toISOString().split("T")[0],
+            score: "",
+          });
+          setShowAddScore(false);
+        };
+
+        const calculateStats = (playerScores) => {
+          const scores = Object.values(playerScores);
+          const total = scores.reduce((sum, score) => sum + score, 0);
+          const average =
+            scores.length > 0 ? (total / scores.length).toFixed(2) : 0;
+          const gamesPlayed = scores.length;
+          return { average: parseFloat(average), gamesPlayed, total };
+        };
+
+        const getLeaderboard = () => {
+          return Object.entries(players)
+            .map(([name, scores]) => ({
+              name,
+              ...calculateStats(scores),
+            }))
+            .sort((a, b) => a.average - b.average);
+        };
+
+        const getPlayerHistory = (name) => {
+          if (!players[name]) return [];
+          return Object.entries(players[name])
+            .map(([date, score]) => ({ date, score }))
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+        };
+
+        const deleteScore = (playerName, date) => {
+          if (!confirm(`Delete score for ${playerName} on ${date}?`)) return;
+
+          const updatedPlayers = { ...players };
+          delete updatedPlayers[playerName][date];
+
+          if (Object.keys(updatedPlayers[playerName]).length === 0) {
+            delete updatedPlayers[playerName];
+            setView("leaderboard");
+            setSelectedPlayer(null);
+          }
+
+          setPlayers(updatedPlayers);
+          saveData(updatedPlayers);
+        };
+
+        const leaderboard = getLeaderboard();
+
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 p-4">
+            <div className="max-w-4xl mx-auto">
+              <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <Trophy className="w-8 h-8 text-orange-500" />
+                    <h1 className="text-3xl font-bold text-gray-800">
+                      Immaculate Grid Tracker
+                    </h1>
+                  </div>
+                  {view === "leaderboard" && (
+                    <button
+                      onClick={() => setShowAddScore(true)}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <Plus className="w-5 h-5" />
+                      Add Score
+                    </button>
+                  )}
+                  {view === "player" && (
+                    <button
+                      onClick={() => {
+                        setView("leaderboard");
+                        setSelectedPlayer(null);
+                      }}
+                      className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                      Back
+                    </button>
+                  )}
+                </div>
+
+                {showAddScore && (
+                  <div className="bg-blue-50 p-6 rounded-lg mb-6 border-2 border-blue-200">
+                    <h2 className="text-xl font-bold mb-4 text-gray-800">
+                      Add New Score
+                    </h2>
+                    <div className="grid gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Player Name
+                        </label>
+                        <input
+                          type="text"
+                          value={newScore.name}
+                          onChange={(e) =>
+                            setNewScore({ ...newScore, name: e.target.value })
+                          }
+                          placeholder="Enter name"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          list="player-names"
+                        />
+                        <datalist id="player-names">
+                          {Object.keys(players).map((name) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Date
+                        </label>
+                        <input
+                          type="date"
+                          value={newScore.date}
+                          onChange={(e) =>
+                            setNewScore({ ...newScore, date: e.target.value })
+                          }
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Score (0-900)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="900"
+                          value={newScore.score}
+                          onChange={(e) =>
+                            setNewScore({ ...newScore, score: e.target.value })
+                          }
+                          placeholder="Enter score"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleAddScore}
+                          className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-medium transition-colors"
+                        >
+                          Save Score
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowAddScore(false);
+                            setNewScore({
+                              name: "",
+                              date: new Date().toISOString().split("T")[0],
+                              score: "",
+                            });
+                          }}
+                          className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded-lg font-medium transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {view === "leaderboard" && (
+                  <div>
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800">
+                      Leaderboard
+                    </h2>
+                    {leaderboard.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        <Trophy className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                        <p className="text-lg">
+                          No scores yet. Add your first score to get started!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {leaderboard.map((player, index) => (
+                          <div
+                            key={player.name}
+                            onClick={() => {
+                              setSelectedPlayer(player.name);
+                              setView("player");
+                            }}
+                            className="bg-gradient-to-r from-white to-gray-50 p-4 rounded-lg border-2 border-gray-200 hover:border-orange-300 cursor-pointer transition-all hover:shadow-md"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div
+                                  className={`text-2xl font-bold ${
+                                    index === 0
+                                      ? "text-yellow-500"
+                                      : index === 1
+                                      ? "text-gray-400"
+                                      : index === 2
+                                      ? "text-orange-600"
+                                      : "text-gray-400"
+                                  }`}
+                                >
+                                  #{index + 1}
+                                </div>
+                                <div>
+                                  <h3 className="text-lg font-bold text-gray-800">
+                                    {player.name}
+                                  </h3>
+                                  <div className="flex gap-4 text-sm text-gray-600">
+                                    <span className="flex items-center gap-1">
+                                      <TrendingDown className="w-4 h-4" />
+                                      Avg: {player.average}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Hash className="w-4 h-4" />
+                                      Games: {player.gamesPlayed}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-3xl font-bold text-orange-500">
+                                  {player.average}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  average
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {view === "player" && selectedPlayer && (
+                  <div>
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800">
+                      {selectedPlayer}'s Scores
+                    </h2>
+                    <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                          <div className="text-2xl font-bold text-orange-500">
+                            {calculateStats(players[selectedPlayer]).average}
+                          </div>
+                          <div className="text-sm text-gray-600">Average</div>
+                        </div>
+                        <div>
+                          <div className="text-2xl font-bold text-blue-500">
+                            {
+                              calculateStats(players[selectedPlayer])
+                                .gamesPlayed
+                            }
+                          </div>
+                          <div className="text-sm text-gray-600">Games</div>
+                        </div>
+                        <div>
+                          <div className="text-2xl font-bold text-green-500">
+                            {calculateStats(players[selectedPlayer]).total}
+                          </div>
+                          <div className="text-sm text-gray-600">Total</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {getPlayerHistory(selectedPlayer).map(
+                        ({ date, score }) => (
+                          <div
+                            key={date}
+                            className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Calendar className="w-5 h-5 text-gray-400" />
+                              <span className="font-medium text-gray-700">
+                                {new Date(
+                                  date + "T00:00:00"
+                                ).toLocaleDateString("en-US", {
+                                  weekday: "short",
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`text-xl font-bold ${
+                                  score <= 100
+                                    ? "text-green-500"
+                                    : score <= 300
+                                    ? "text-yellow-500"
+                                    : "text-red-500"
+                                }`}
+                              >
+                                {score}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  deleteScore(selectedPlayer, date)
+                                }
+                                className="text-red-500 hover:text-red-700 text-sm font-medium"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center text-sm text-gray-600">
+                <p>
+                  Track your Immaculate Grid scores and compete with friends!
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      export default ImmaculateGridTracker;
+    </script>
+  </body>
+</html>
