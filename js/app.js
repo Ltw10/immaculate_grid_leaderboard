@@ -1,13 +1,16 @@
 // Main application component
 const { useState, useEffect } = React;
 const e = React.createElement;
-const { Trophy, Plus, ArrowLeft, Calendar, TrendingDown, Hash } = window.Icons;
+const { Trophy, Plus, ArrowLeft, Calendar, TrendingDown, Hash, RefreshCw } =
+  window.Icons;
 
 const ImmaculateGridTracker = () => {
   const [view, setView] = useState("leaderboard");
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [players, setPlayers] = useState({});
   const [showAddScore, setShowAddScore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [newScore, setNewScore] = useState({
     name: "",
     date: new Date().toISOString().split("T")[0],
@@ -19,25 +22,30 @@ const ImmaculateGridTracker = () => {
   }, []);
 
   const loadData = async () => {
+    setLoading(true);
     try {
-      const result = await window.storage.get("immaculate-grid-players");
-      if (result && result.value) {
-        setPlayers(JSON.parse(result.value));
-      }
+      const scores = await window.storage.get();
+
+      // Convert array of scores to players object
+      const playersObj = {};
+      scores.forEach((score) => {
+        if (!playersObj[score.name]) {
+          playersObj[score.name] = {};
+        }
+        playersObj[score.name][score.date] = score.score;
+      });
+
+      console.log("Data loaded:", playersObj);
+      setPlayers(playersObj);
     } catch (error) {
-      console.log("No existing data found");
+      console.error("Error loading data:", error);
+      alert("Failed to load data. Please check your SCRIPT_URL in storage.js");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const saveData = async (data) => {
-    try {
-      await window.storage.set("immaculate-grid-players", JSON.stringify(data));
-    } catch (error) {
-      console.error("Failed to save data:", error);
-    }
-  };
-
-  const handleAddScore = () => {
+  const handleAddScore = async () => {
     if (!newScore.name || !newScore.date || !newScore.score) {
       alert("Please fill in all fields");
       return;
@@ -49,12 +57,9 @@ const ImmaculateGridTracker = () => {
       return;
     }
 
-    const updatedPlayers = { ...players };
-    if (!updatedPlayers[newScore.name]) {
-      updatedPlayers[newScore.name] = {};
-    }
-
-    if (updatedPlayers[newScore.name][newScore.date]) {
+    // Check if score already exists
+    const existingScore = players[newScore.name]?.[newScore.date];
+    if (existingScore) {
       if (
         !confirm(
           `${newScore.name} already has a score for ${newScore.date}. Overwrite?`
@@ -64,16 +69,38 @@ const ImmaculateGridTracker = () => {
       }
     }
 
-    updatedPlayers[newScore.name][newScore.date] = score;
-    setPlayers(updatedPlayers);
-    saveData(updatedPlayers);
+    setSaving(true);
+    try {
+      const result = await window.storage.update(
+        newScore.name,
+        newScore.date,
+        score
+      );
 
-    setNewScore({
-      name: "",
-      date: new Date().toISOString().split("T")[0],
-      score: "",
-    });
-    setShowAddScore(false);
+      if (result.success) {
+        // Update local state
+        const updatedPlayers = { ...players };
+        if (!updatedPlayers[newScore.name]) {
+          updatedPlayers[newScore.name] = {};
+        }
+        updatedPlayers[newScore.name][newScore.date] = score;
+        setPlayers(updatedPlayers);
+
+        setNewScore({
+          name: "",
+          date: new Date().toISOString().split("T")[0],
+          score: "",
+        });
+        setShowAddScore(false);
+      } else {
+        alert("Failed to save score: " + result.message);
+      }
+    } catch (error) {
+      console.error("Error saving score:", error);
+      alert("Failed to save score. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const calculateStats = (playerScores) => {
@@ -100,23 +127,60 @@ const ImmaculateGridTracker = () => {
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   };
 
-  const deleteScore = (playerName, date) => {
+  const deleteScore = async (playerName, date) => {
     if (!confirm(`Delete score for ${playerName} on ${date}?`)) return;
 
-    const updatedPlayers = { ...players };
-    delete updatedPlayers[playerName][date];
+    setSaving(true);
+    try {
+      const result = await window.storage.delete(playerName, date);
 
-    if (Object.keys(updatedPlayers[playerName]).length === 0) {
-      delete updatedPlayers[playerName];
-      setView("leaderboard");
-      setSelectedPlayer(null);
+      if (result.success) {
+        const updatedPlayers = { ...players };
+        delete updatedPlayers[playerName][date];
+
+        if (Object.keys(updatedPlayers[playerName]).length === 0) {
+          delete updatedPlayers[playerName];
+          setView("leaderboard");
+          setSelectedPlayer(null);
+        }
+
+        setPlayers(updatedPlayers);
+      } else {
+        alert("Failed to delete score: " + result.message);
+      }
+    } catch (error) {
+      console.error("Error deleting score:", error);
+      alert("Failed to delete score. Please try again.");
+    } finally {
+      setSaving(false);
     }
-
-    setPlayers(updatedPlayers);
-    saveData(updatedPlayers);
   };
 
   const leaderboard = getLeaderboard();
+
+  if (loading) {
+    return e(
+      "div",
+      {
+        className:
+          "min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 flex items-center justify-center",
+      },
+      e(
+        "div",
+        { className: "text-center" },
+        e(
+          "div",
+          { className: "text-2xl font-bold text-gray-800 mb-2" },
+          "Loading..."
+        ),
+        e(
+          "div",
+          { className: "text-gray-600" },
+          "Fetching scores from Google Sheets"
+        )
+      )
+    );
+  }
 
   return e(
     "div",
@@ -129,7 +193,6 @@ const ImmaculateGridTracker = () => {
       e(
         "div",
         { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
-        // Header
         e(
           "div",
           { className: "flex items-center justify-between mb-6" },
@@ -143,34 +206,59 @@ const ImmaculateGridTracker = () => {
               "Immaculate Grid Tracker"
             )
           ),
-          view === "leaderboard" &&
-            e(
-              "button",
-              {
-                onClick: () => setShowAddScore(true),
-                className:
-                  "bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
-              },
-              e(Plus, { className: "w-5 h-5" }),
-              "Add Score"
-            ),
-          view === "player" &&
-            e(
-              "button",
-              {
-                onClick: () => {
-                  setView("leaderboard");
-                  setSelectedPlayer(null);
+          e(
+            "div",
+            { className: "flex gap-2" },
+            view === "leaderboard" &&
+              e(
+                "button",
+                {
+                  onClick: loadData,
+                  className:
+                    "bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                  disabled: loading,
                 },
-                className:
-                  "bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
-              },
-              e(ArrowLeft, { className: "w-5 h-5" }),
-              "Back"
-            )
+                e(RefreshCw, { className: "w-5 h-5" }),
+                "Refresh"
+              ),
+            view === "leaderboard" &&
+              e(
+                "button",
+                {
+                  onClick: () => setShowAddScore(true),
+                  className:
+                    "bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                },
+                e(Plus, { className: "w-5 h-5" }),
+                "Add Score"
+              ),
+            view === "player" &&
+              e(
+                "button",
+                {
+                  onClick: () => {
+                    setView("leaderboard");
+                    setSelectedPlayer(null);
+                  },
+                  className:
+                    "bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                },
+                e(ArrowLeft, { className: "w-5 h-5" }),
+                "Back"
+              )
+          )
         ),
 
-        // Add Score Form
+        saving &&
+          e(
+            "div",
+            {
+              className:
+                "bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg mb-4",
+            },
+            "Saving to Google Sheets..."
+          ),
+
         showAddScore &&
           e(
             "div",
@@ -256,10 +344,11 @@ const ImmaculateGridTracker = () => {
                   "button",
                   {
                     onClick: handleAddScore,
+                    disabled: saving,
                     className:
-                      "flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-medium transition-colors",
+                      "flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50",
                   },
-                  "Save Score"
+                  saving ? "Saving..." : "Save Score"
                 ),
                 e(
                   "button",
@@ -272,8 +361,9 @@ const ImmaculateGridTracker = () => {
                         score: "",
                       });
                     },
+                    disabled: saving,
                     className:
-                      "flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded-lg font-medium transition-colors",
+                      "flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50",
                   },
                   "Cancel"
                 )
@@ -281,7 +371,6 @@ const ImmaculateGridTracker = () => {
             )
           ),
 
-        // Leaderboard View
         view === "leaderboard" &&
           e(
             "div",
@@ -384,7 +473,6 @@ const ImmaculateGridTracker = () => {
                 )
           ),
 
-        // Player Detail View
         view === "player" &&
           selectedPlayer &&
           e(
@@ -479,8 +567,9 @@ const ImmaculateGridTracker = () => {
                       "button",
                       {
                         onClick: () => deleteScore(selectedPlayer, date),
+                        disabled: saving,
                         className:
-                          "text-red-500 hover:text-red-700 text-sm font-medium",
+                          "text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50",
                       },
                       "Delete"
                     )
@@ -497,12 +586,13 @@ const ImmaculateGridTracker = () => {
         e(
           "p",
           null,
-          "Track your Immaculate Grid scores and compete with friends!"
+          "Track your Immaculate Grid scores with friends! Data synced via Google Sheets."
         )
       )
     )
   );
 };
 
-// Render the app
+console.log("Rendering app...");
 ReactDOM.render(e(ImmaculateGridTracker), document.getElementById("root"));
+console.log("App rendered successfully!");

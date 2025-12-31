@@ -137,6 +137,31 @@ window.Icons = {
       React.createElement("line", { x1: "10", x2: "8", y1: "3", y2: "21" }),
       React.createElement("line", { x1: "16", x2: "14", y1: "3", y2: "21" })
     ),
+
+  RefreshCw: (props) =>
+    React.createElement(
+      "svg",
+      {
+        xmlns: "http://www.w3.org/2000/svg",
+        width: 24,
+        height: 24,
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 2,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        ...props,
+      },
+      React.createElement("path", {
+        d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
+      }),
+      React.createElement("path", { d: "M21 3v5h-5" }),
+      React.createElement("path", {
+        d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",
+      }),
+      React.createElement("path", { d: "M3 21v-5h5" })
+    ),
 };
 
 console.log("Icons loaded successfully");
