@@ -1,7 +1,7 @@
 // Google Sheets storage utility
 // ⚠️ REPLACE THIS WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
 const SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbyErJPFavUbZitPNwx3jmwsacl1cjRIwGk2Z5LT03S7HBbrZ7hozMx2b8YEMvmaOrnw/exec";
+  "https://script.google.com/macros/s/AKfycbyjx5JprYC0H9sRXz4W7GERgQc3I79Bb5ei5SR28alSvauAX-1FIA4W2KCMXQewkvPZ/exec";
 
 window.storage = {
   get: async () => {
