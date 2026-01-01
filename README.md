@@ -1,13 +1,13 @@
 # Immaculate Grid Tracker
 
-A web application to track and compare Immaculate Grid scores with friends. Data is stored in Google Sheets so everyone can see the same leaderboard!
+A web application to track and compare Immaculate Grid scores with friends. Data is stored in Supabase so everyone can see the same leaderboard!
 
 ## Features
 
 - 📊 Leaderboard showing players ranked by average score
 - 📅 Track scores by date
 - 📈 Individual player statistics and history
-- 💾 Persistent data storage using Google Sheets
+- 💾 Persistent data storage using Supabase
 - 🔄 Real-time data syncing across all users
 - 📱 Mobile-friendly responsive design
 
@@ -18,148 +18,55 @@ immaculate-grid-tracker/
 ├── index.html          # Main HTML file
 ├── js/
 │   ├── app.js         # Main React component
-│   ├── storage.js     # Google Sheets API integration
+│   ├── storage.js     # Supabase API integration
 │   └── icons.js       # SVG icon components
+├── supabase_setup.sql # Database setup script
+├── SUPABASE_SETUP.md  # Detailed Supabase setup guide
 └── README.md          # This file
 ```
 
-## Setup Instructions
+## Quick Start
 
-### Step 1: Create Your Google Sheet
+### Step 1: Set Up Supabase
 
-1. Go to [Google Sheets](https://sheets.google.com) and create a new spreadsheet
-2. Name it "Immaculate Grid Scores"
-3. In Row 1, add these headers:
-   - A1: `Name`
-   - B1: `Date`
-   - C1: `Score`
+1. Create a free account at [supabase.com](https://supabase.com)
+2. Create a new project
+3. Go to **SQL Editor** and run the `supabase_setup.sql` script
+4. Get your credentials from **Project Settings** → **Data API & API Keys**:
+   - Project URL
+   - Publishable Key
 
-### Step 2: Set Up Google Apps Script
+For detailed instructions, see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md).
 
-1. In your Google Sheet, go to **Extensions** → **Apps Script**
-2. Delete any existing code
-3. Paste the following code:
-
-```javascript
-function doGet(e) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const data = sheet.getDataRange().getValues();
-
-  // Skip header row and convert to array of objects
-  const scores = [];
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) {
-      // Only include rows with a name
-      scores.push({
-        name: data[i][0],
-        date: data[i][1],
-        score: data[i][2],
-      });
-    }
-  }
-
-  return ContentService.createTextOutput(
-    JSON.stringify({ scores: scores })
-  ).setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const data = JSON.parse(e.postData.contents);
-
-    if (data.action === "add") {
-      // Add a new score
-      sheet.appendRow([data.name, data.date, data.score]);
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: true, message: "Score added" })
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    if (data.action === "delete") {
-      // Delete a score
-      const allData = sheet.getDataRange().getValues();
-      for (let i = 1; i < allData.length; i++) {
-        if (allData[i][0] === data.name && allData[i][1] === data.date) {
-          sheet.deleteRow(i + 1);
-          return ContentService.createTextOutput(
-            JSON.stringify({ success: true, message: "Score deleted" })
-          ).setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: false, message: "Score not found" })
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    if (data.action === "update") {
-      // Update an existing score
-      const allData = sheet.getDataRange().getValues();
-      for (let i = 1; i < allData.length; i++) {
-        if (allData[i][0] === data.name && allData[i][1] === data.date) {
-          sheet.getRange(i + 1, 3).setValue(data.score);
-          return ContentService.createTextOutput(
-            JSON.stringify({ success: true, message: "Score updated" })
-          ).setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-      // If not found, add it
-      sheet.appendRow([data.name, data.date, data.score]);
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: true, message: "Score added" })
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    return ContentService.createTextOutput(
-      JSON.stringify({ success: false, message: "Unknown action" })
-    ).setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(
-      JSON.stringify({ success: false, message: error.toString() })
-    ).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-```
-
-4. **Save the script** (Ctrl+S or Cmd+S)
-5. **Deploy the script:**
-   - Click **Deploy** → **New deployment**
-   - Click the gear icon next to "Select type" → Choose **Web app**
-   - Settings:
-     - Description: "Immaculate Grid API"
-     - Execute as: **Me**
-     - Who has access: **Anyone**
-   - Click **Deploy**
-   - You'll be asked to authorize - click **Authorize access**
-   - On the warning screen, click **Advanced** → **Go to [project name] (unsafe)**
-   - Click **Allow**
-6. **Copy the Web App URL** (it ends with `/exec`)
-
-### Step 3: Configure Your App
+### Step 2: Configure the App
 
 1. Open `js/storage.js`
-2. Find this line:
+2. Replace the placeholder values with your Supabase credentials:
    ```javascript
-   const SCRIPT_URL = "YOUR_GOOGLE_SCRIPT_URL_HERE";
+   const SUPABASE_URL = "https://xxxxx.supabase.co";
+   const SUPABASE_ANON_KEY = "your-publishable-key-here";
    ```
-3. Replace it with your actual Web App URL:
-   ```javascript
-   const SCRIPT_URL = "https://script.google.com/macros/s/YOUR_ID_HERE/exec";
-   ```
-4. Save the file
 
-### Step 4: Deploy to GitHub Pages
+### Step 3: Run Locally
+
+**Using Python:**
+
+```bash
+python -m http.server 8000
+```
+
+**Using Node.js (http-server):**
+
+```bash
+npx http-server
+```
+
+Then open `http://localhost:8000` in your browser.
+
+### Step 4: Deploy (Optional)
 
 1. Create a new repository on GitHub
-2. Upload your files maintaining this structure:
-   ```
-   your-repo/
-   ├── index.html
-   └── js/
-       ├── app.js
-       ├── storage.js
-       └── icons.js
-   ```
+2. Upload your files maintaining the structure above
 3. Go to repository **Settings** → **Pages**
 4. Under **Source**, select:
    - Branch: `main` (or `master`)
@@ -171,45 +78,44 @@ function doPost(e) {
 
 1. **Add Score**: Click the "Add Score" button to enter a player's name, date, and score (0-900)
 2. **View Leaderboard**: See all players ranked by their average score
-3. **Refresh Data**: Click the "Refresh" button to fetch the latest scores from Google Sheets
+3. **Refresh Data**: Click the "Refresh" button to fetch the latest scores from Supabase
 4. **View Player Details**: Click on any player to see their complete score history
 5. **Delete Scores**: In the player detail view, you can delete individual scores
 
 ## Data Storage
 
-All data is stored in your Google Sheet, which means:
+All data is stored in your Supabase database, which means:
 
 - ✅ Data is shared across all users
 - ✅ Everyone sees the same leaderboard in real-time (after refresh)
-- ✅ You can view and edit data directly in Google Sheets
-- ✅ Data persists forever (backed by Google)
-- ✅ You can manually add/edit scores in the spreadsheet
+- ✅ You can view and edit data directly in Supabase dashboard
+- ✅ Data persists forever (backed by Supabase)
+- ✅ Automatic timestamps for created_at and updated_at
 
 ## Troubleshooting
 
-### "Failed to load data" Error
+### "Failed to fetch" Error
 
-- Check that your `SCRIPT_URL` in `js/storage.js` is correct
-- Make sure it ends with `/exec` not `/edit`
-- Verify the Apps Script is deployed as "Anyone" can access
+- Verify your `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `js/storage.js` are correct
+- Make sure you copied the full URL (including `https://`)
+- Check that your Supabase project is active
 
-### "Too many redirects" in Apps Script
+### "permission denied" Error
 
-- Sign out of all Google accounts
-- Sign back in to only the account that owns the sheet
-- Try using Chrome profiles or Incognito mode with one account
+- Make sure you ran the SQL setup script (`supabase_setup.sql`)
+- Verify that Row Level Security policies were created
+- Check the Supabase dashboard → Authentication → Policies
 
-### Scores not saving
+### Scores Not Appearing
 
 - Check the browser console (F12) for error messages
-- Verify the Apps Script has proper permissions
-- Make sure the Google Sheet has headers in row 1: Name, Date, Score
+- Verify the table was created: Go to Supabase → Table Editor → `scores` table
+- Make sure the SQL script ran successfully
 
-### Multiple Google Accounts Issue
+### CORS Errors
 
-- Use account-specific URLs: Add `/u/0/` after `google.com` in your sheet URL
-- Example: `https://docs.google.com/spreadsheets/u/0/d/YOUR_SHEET_ID/edit`
-- Or use Chrome profiles to separate accounts
+- Supabase handles CORS automatically, so this shouldn't be an issue
+- If you see CORS errors, check that you're using the correct URL format
 
 ## Local Development
 
@@ -229,7 +135,7 @@ npx http-server
 
 Then open `http://localhost:8000` in your browser.
 
-**Note:** The app will still connect to your live Google Sheet even when testing locally.
+**Note:** The app will connect to your live Supabase database even when testing locally.
 
 ## Browser Compatibility
 
@@ -241,10 +147,12 @@ Works in all modern browsers that support:
 
 ## Privacy & Security
 
-- The Google Apps Script is deployed as "Anyone" can access, meaning anyone with the URL can read/write data
-- No authentication is built in - anyone can add or delete scores
-- Consider this when sharing the app publicly
-- You can view all data directly in your Google Sheet
+- The current setup allows **anyone** to read, write, update, and delete scores
+- This is fine for a personal/friends leaderboard
+- If you want to add authentication or restrict access, you'll need to:
+  - Modify the RLS policies in Supabase
+  - Implement authentication in the app
+  - Use authenticated API keys instead of the anon key
 
 ## License
 
@@ -255,6 +163,6 @@ Free to use and modify for personal use.
 If you encounter issues:
 
 1. Check the browser console (F12) for error messages
-2. Verify your Google Apps Script is properly deployed
-3. Make sure the SCRIPT_URL is correctly set in `js/storage.js`
-4. Test by manually adding a row to your Google Sheet and clicking "Refresh"
+2. Verify your Supabase project is properly set up
+3. Make sure the SUPABASE_URL and SUPABASE_ANON_KEY are correctly set in `js/storage.js`
+4. Review the [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) guide for detailed setup instructions

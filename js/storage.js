@@ -33,10 +33,19 @@ window.storage = {
   get: async () => {
     try {
       console.log("Fetching data from Supabase...");
-      const data = await supabaseRequest("scores?select=*&order=date.desc");
+      const data = await supabaseRequest(
+        "scores?select=*&order=grid_date.desc"
+      );
       console.log("Data received:", data);
-      // Supabase returns an array directly
-      return Array.isArray(data) ? data : [];
+      // Map database schema (player_name, grid_date) to app format (name, date)
+      if (Array.isArray(data)) {
+        return data.map((row) => ({
+          name: row.player_name,
+          date: row.grid_date,
+          score: row.score,
+        }));
+      }
+      return [];
     } catch (error) {
       console.error("Error fetching data:", error);
       return [];
@@ -45,9 +54,14 @@ window.storage = {
   add: async (name, date, score) => {
     try {
       console.log("Adding score:", { name, date, score });
+      // Map app format (name, date) to database schema (player_name, grid_date)
       const data = await supabaseRequest("scores", {
         method: "POST",
-        body: JSON.stringify({ name, date, score }),
+        body: JSON.stringify({
+          player_name: name,
+          grid_date: date,
+          score: score,
+        }),
       });
       console.log("Add result:", data);
       return { success: true, message: "Score added" };
@@ -59,11 +73,11 @@ window.storage = {
   update: async (name, date, score) => {
     try {
       console.log("Updating score:", { name, date, score });
-      // First try to update existing score
+      // First try to update existing score using database column names
       const existing = await supabaseRequest(
-        `scores?name=eq.${encodeURIComponent(
+        `scores?player_name=eq.${encodeURIComponent(
           name
-        )}&date=eq.${encodeURIComponent(date)}&select=id`
+        )}&grid_date=eq.${encodeURIComponent(date)}&select=id`
       );
 
       if (existing && existing.length > 0) {
@@ -78,7 +92,11 @@ window.storage = {
         // Insert new score if it doesn't exist
         await supabaseRequest("scores", {
           method: "POST",
-          body: JSON.stringify({ name, date, score }),
+          body: JSON.stringify({
+            player_name: name,
+            grid_date: date,
+            score: score,
+          }),
         });
         console.log("Update result: Score added");
         return { success: true, message: "Score added" };
@@ -91,11 +109,11 @@ window.storage = {
   delete: async (name, date) => {
     try {
       console.log("Deleting score:", { name, date });
-      // Find the score first
+      // Find the score first using database column names
       const existing = await supabaseRequest(
-        `scores?name=eq.${encodeURIComponent(
+        `scores?player_name=eq.${encodeURIComponent(
           name
-        )}&date=eq.${encodeURIComponent(date)}&select=id`
+        )}&grid_date=eq.${encodeURIComponent(date)}&select=id`
       );
 
       if (!existing || existing.length === 0) {

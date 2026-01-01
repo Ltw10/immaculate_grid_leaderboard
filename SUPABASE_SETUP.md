@@ -22,17 +22,17 @@ This guide will help you set up Supabase as the backend for the Immaculate Grid 
 
 This will create:
 
-- A `scores` table with columns: `id`, `name`, `date`, `score`
+- A `scores` table with columns: `id`, `player_name`, `grid_date`, `score`
 - Indexes for faster queries
 - Row Level Security (RLS) policies that allow public read/write access
 - Automatic timestamp tracking
 
 ## Step 3: Get Your Supabase Credentials
 
-1. In your Supabase project dashboard, go to **Settings** → **API** (left sidebar)
+1. In your Supabase project dashboard, go to **Project Settings** → **Data API & API Keys** (left sidebar)
 2. You'll find:
    - **Project URL**: Copy this (looks like `https://xxxxx.supabase.co`)
-   - **anon/public key**: Copy this (starts with `eyJ...`)
+   - **Publishable Key**: Copy this (starts with `eyJ...`)
 
 ## Step 4: Configure the App
 

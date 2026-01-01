@@ -2,21 +2,20 @@
 -- Run this SQL in your Supabase SQL Editor
 
 -- Create the scores table
-CREATE TABLE IF NOT EXISTS scores (
-  id BIGSERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  date TEXT NOT NULL,
-  score INTEGER NOT NULL CHECK (score >= 0 AND score <= 900),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(name, date)
+create table scores (
+  id uuid primary key default gen_random_uuid(),
+  player_name text not null,
+  score int not null,
+  grid_date date not null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
 );
 
 -- Create an index on name and date for faster queries
-CREATE INDEX IF NOT EXISTS idx_scores_name_date ON scores(name, date);
+CREATE INDEX IF NOT EXISTS idx_scores_name_date ON scores(player_name, grid_date);
 
 -- Create an index on date for sorting
-CREATE INDEX IF NOT EXISTS idx_scores_date ON scores(date DESC);
+CREATE INDEX IF NOT EXISTS idx_scores_date ON scores(grid_date DESC);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;

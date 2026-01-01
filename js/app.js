@@ -178,7 +178,7 @@ const ImmaculateGridTracker = () => {
         e(
           "div",
           { className: "text-gray-600" },
-          "Fetching scores from Google Sheets"
+          "Fetching scores from Supabase"
         )
       )
     );
@@ -258,7 +258,7 @@ const ImmaculateGridTracker = () => {
               className:
                 "bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg mb-4",
             },
-            "Saving to Google Sheets..."
+            "Saving to Supabase..."
           ),
 
         showAddScore &&
@@ -588,7 +588,7 @@ const ImmaculateGridTracker = () => {
         e(
           "p",
           null,
-          "Track your Immaculate Grid scores with friends! Data synced via Google Sheets."
+          "Track your Immaculate Grid scores with friends! Data synced via Supabase."
         )
       )
     )
