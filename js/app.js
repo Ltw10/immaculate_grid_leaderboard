@@ -39,7 +39,9 @@ const ImmaculateGridTracker = () => {
       setPlayers(playersObj);
     } catch (error) {
       console.error("Error loading data:", error);
-      alert("Failed to load data. Please check your SCRIPT_URL in storage.js");
+      alert(
+        "Failed to load data. Please check your Supabase credentials in storage.js"
+      );
     } finally {
       setLoading(false);
     }

@@ -1,16 +1,42 @@
-// Google Sheets storage utility
-// ⚠️ REPLACE THIS WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
-const SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbyjx5JprYC0H9sRXz4W7GERgQc3I79Bb5ei5SR28alSvauAX-1FIA4W2KCMXQewkvPZ/exec";
+// Supabase storage utility
+// ⚠️ REPLACE THESE WITH YOUR SUPABASE PROJECT CREDENTIALS
+const SUPABASE_URL = "https://jvfcsemgypiexqeiuqax.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Led1z5rXySTKSamM5QHnFA_DOVxdT3x";
+
+// Helper function to make Supabase API requests
+const supabaseRequest = async (endpoint, options = {}) => {
+  const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    Prefer: "return=representation",
+    ...options.headers,
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Supabase error: ${response.status} - ${error}`);
+  }
+
+  // Handle empty responses
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+};
 
 window.storage = {
   get: async () => {
     try {
-      console.log("Fetching data from Google Sheets...");
-      const response = await fetch(SCRIPT_URL);
-      const data = await response.json();
+      console.log("Fetching data from Supabase...");
+      const data = await supabaseRequest("scores?select=*&order=date.desc");
       console.log("Data received:", data);
-      return data.scores || [];
+      // Supabase returns an array directly
+      return Array.isArray(data) ? data : [];
     } catch (error) {
       console.error("Error fetching data:", error);
       return [];
@@ -19,14 +45,12 @@ window.storage = {
   add: async (name, date, score) => {
     try {
       console.log("Adding score:", { name, date, score });
-      const response = await fetch(SCRIPT_URL, {
+      const data = await supabaseRequest("scores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", name, date, score }),
+        body: JSON.stringify({ name, date, score }),
       });
-      const result = await response.json();
-      console.log("Add result:", result);
-      return result;
+      console.log("Add result:", data);
+      return { success: true, message: "Score added" };
     } catch (error) {
       console.error("Error adding score:", error);
       return { success: false, message: error.toString() };
@@ -35,14 +59,30 @@ window.storage = {
   update: async (name, date, score) => {
     try {
       console.log("Updating score:", { name, date, score });
-      const response = await fetch(SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", name, date, score }),
-      });
-      const result = await response.json();
-      console.log("Update result:", result);
-      return result;
+      // First try to update existing score
+      const existing = await supabaseRequest(
+        `scores?name=eq.${encodeURIComponent(
+          name
+        )}&date=eq.${encodeURIComponent(date)}&select=id`
+      );
+
+      if (existing && existing.length > 0) {
+        // Update existing score
+        await supabaseRequest(`scores?id=eq.${existing[0].id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ score }),
+        });
+        console.log("Update result: Score updated");
+        return { success: true, message: "Score updated" };
+      } else {
+        // Insert new score if it doesn't exist
+        await supabaseRequest("scores", {
+          method: "POST",
+          body: JSON.stringify({ name, date, score }),
+        });
+        console.log("Update result: Score added");
+        return { success: true, message: "Score added" };
+      }
     } catch (error) {
       console.error("Error updating score:", error);
       return { success: false, message: error.toString() };
@@ -51,14 +91,23 @@ window.storage = {
   delete: async (name, date) => {
     try {
       console.log("Deleting score:", { name, date });
-      const response = await fetch(SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", name, date }),
+      // Find the score first
+      const existing = await supabaseRequest(
+        `scores?name=eq.${encodeURIComponent(
+          name
+        )}&date=eq.${encodeURIComponent(date)}&select=id`
+      );
+
+      if (!existing || existing.length === 0) {
+        return { success: false, message: "Score not found" };
+      }
+
+      // Delete the score
+      await supabaseRequest(`scores?id=eq.${existing[0].id}`, {
+        method: "DELETE",
       });
-      const result = await response.json();
-      console.log("Delete result:", result);
-      return result;
+      console.log("Delete result: success");
+      return { success: true, message: "Score deleted" };
     } catch (error) {
       console.error("Error deleting score:", error);
       return { success: false, message: error.toString() };
@@ -66,4 +115,4 @@ window.storage = {
   },
 };
 
-console.log("Google Sheets storage utility loaded");
+console.log("Supabase storage utility loaded");
