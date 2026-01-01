@@ -129,6 +129,21 @@ const ImmaculateGridTracker = () => {
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   };
 
+  const getTodaysScores = () => {
+    const today = new Date().toISOString().split("T")[0];
+    const todaysScores = [];
+    Object.entries(players).forEach(([name, scores]) => {
+      if (scores[today] !== undefined) {
+        todaysScores.push({
+          name,
+          score: scores[today],
+          date: today,
+        });
+      }
+    });
+    return todaysScores.sort((a, b) => a.score - b.score);
+  };
+
   const deleteScore = async (playerName, date) => {
     if (!confirm(`Delete score for ${playerName} on ${date}?`)) return;
 
@@ -222,6 +237,24 @@ const ImmaculateGridTracker = () => {
                 },
                 e(RefreshCw, { className: "w-5 h-5" }),
                 "Refresh"
+              ),
+            view === "leaderboard" &&
+              e(
+                "button",
+                {
+                  onClick: () => {
+                    setNewScore({
+                      name: "",
+                      date: new Date().toISOString().split("T")[0],
+                      score: "",
+                    });
+                    setShowAddScore(true);
+                  },
+                  className:
+                    "bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                },
+                e(Calendar, { className: "w-5 h-5" }),
+                "Add Today's Score"
               ),
             view === "leaderboard" &&
               e(
@@ -377,11 +410,84 @@ const ImmaculateGridTracker = () => {
           e(
             "div",
             null,
-            e(
-              "h2",
-              { className: "text-2xl font-bold mb-4 text-gray-800" },
-              "Leaderboard"
-            ),
+            (() => {
+              const todaysScores = getTodaysScores();
+              return e(
+                "div",
+                null,
+                todaysScores.length > 0 &&
+                  e(
+                    "div",
+                    {
+                      className:
+                        "bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg mb-6 border-2 border-green-200",
+                    },
+                    e(
+                      "div",
+                      { className: "flex items-center justify-between mb-3" },
+                      e(
+                        "h3",
+                        {
+                          className:
+                            "text-lg font-bold text-gray-800 flex items-center gap-2",
+                        },
+                        e(Calendar, { className: "w-5 h-5 text-green-600" }),
+                        "Today's Scores"
+                      ),
+                      e(
+                        "span",
+                        { className: "text-sm text-gray-600" },
+                        new Date().toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })
+                      )
+                    ),
+                    e(
+                      "div",
+                      {
+                        className:
+                          "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+                      },
+                      todaysScores.map(({ name, score }) =>
+                        e(
+                          "div",
+                          {
+                            key: name,
+                            className:
+                              "bg-white p-3 rounded-lg border border-green-200 flex items-center justify-between",
+                          },
+                          e(
+                            "span",
+                            { className: "font-medium text-gray-800" },
+                            name
+                          ),
+                          e(
+                            "span",
+                            {
+                              className: `text-lg font-bold ${
+                                score <= 100
+                                  ? "text-green-600"
+                                  : score <= 300
+                                  ? "text-yellow-600"
+                                  : "text-red-600"
+                              }`,
+                            },
+                            score
+                          )
+                        )
+                      )
+                    )
+                  ),
+                e(
+                  "h2",
+                  { className: "text-2xl font-bold mb-4 text-gray-800" },
+                  "Leaderboard"
+                )
+              );
+            })(),
             leaderboard.length === 0
               ? e(
                   "div",
