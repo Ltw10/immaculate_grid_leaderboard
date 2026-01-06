@@ -9,6 +9,7 @@ const ImmaculateGridTracker = () => {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [players, setPlayers] = useState({});
   const [showAddScore, setShowAddScore] = useState(false);
+  const [isTodaysScore, setIsTodaysScore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newScore, setNewScore] = useState({
@@ -93,6 +94,7 @@ const ImmaculateGridTracker = () => {
           date: new Date().toISOString().split("T")[0],
           score: "",
         });
+        setIsTodaysScore(false);
         setShowAddScore(false);
       } else {
         alert("Failed to save score: " + result.message);
@@ -275,6 +277,7 @@ const ImmaculateGridTracker = () => {
                       date: new Date().toISOString().split("T")[0],
                       score: "",
                     });
+                    setIsTodaysScore(true);
                     setShowAddScore(true);
                   },
                   className:
@@ -287,7 +290,10 @@ const ImmaculateGridTracker = () => {
               e(
                 "button",
                 {
-                  onClick: () => setShowAddScore(true),
+                  onClick: () => {
+                    setIsTodaysScore(false);
+                    setShowAddScore(true);
+                  },
                   className:
                     "bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
                 },
@@ -375,8 +381,9 @@ const ImmaculateGridTracker = () => {
                   value: newScore.date,
                   onChange: (ev) =>
                     setNewScore({ ...newScore, date: ev.target.value }),
+                  disabled: isTodaysScore,
                   className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent",
+                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500",
                 })
               ),
               e(
@@ -417,6 +424,7 @@ const ImmaculateGridTracker = () => {
                   {
                     onClick: () => {
                       setShowAddScore(false);
+                      setIsTodaysScore(false);
                       setNewScore({
                         name: "",
                         date: new Date().toISOString().split("T")[0],
