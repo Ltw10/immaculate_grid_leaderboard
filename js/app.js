@@ -105,6 +105,15 @@ const ImmaculateGridTracker = () => {
     }
   };
 
+  // Helper function to check if a date is a weekday (Monday-Friday)
+  const isWeekday = (dateString) => {
+    const date = new Date(dateString + "T00:00:00");
+    const dayOfWeek = date.getDay();
+    // 0 = Sunday, 6 = Saturday, so weekdays are 1-5
+    return dayOfWeek >= 1 && dayOfWeek <= 5;
+  };
+
+  // Calculate stats for all scores (used in player detail view)
   const calculateStats = (playerScores) => {
     const scores = Object.values(playerScores);
     const total = scores.reduce((sum, score) => sum + score, 0);
@@ -113,12 +122,30 @@ const ImmaculateGridTracker = () => {
     return { average: parseFloat(average), gamesPlayed, total };
   };
 
+  // Calculate stats for leaderboard (only weekdays)
+  const calculateLeaderboardStats = (playerScores) => {
+    // Filter to only include weekday scores
+    const weekdayScores = Object.entries(playerScores)
+      .filter(([date]) => isWeekday(date))
+      .map(([, score]) => score);
+    
+    if (weekdayScores.length === 0) {
+      return { average: 0, gamesPlayed: 0, total: 0 };
+    }
+    
+    const total = weekdayScores.reduce((sum, score) => sum + score, 0);
+    const average = (total / weekdayScores.length).toFixed(2);
+    const gamesPlayed = weekdayScores.length;
+    return { average: parseFloat(average), gamesPlayed, total };
+  };
+
   const getLeaderboard = () => {
     return Object.entries(players)
       .map(([name, scores]) => ({
         name,
-        ...calculateStats(scores),
+        ...calculateLeaderboardStats(scores),
       }))
+      .filter((player) => player.gamesPlayed > 0) // Only show players with weekday scores
       .sort((a, b) => a.average - b.average);
   };
 
