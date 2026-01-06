@@ -509,9 +509,21 @@ const ImmaculateGridTracker = () => {
                     )
                   ),
                 e(
-                  "h2",
-                  { className: "text-2xl font-bold mb-4 text-gray-800" },
-                  "Leaderboard"
+                  "div",
+                  { className: "mb-4" },
+                  e(
+                    "h2",
+                    { className: "text-2xl font-bold text-gray-800 mb-2" },
+                    "Leaderboard"
+                  ),
+                  e(
+                    "p",
+                    {
+                      className:
+                        "text-sm text-gray-600 italic",
+                    },
+                    "Note: Only weekday grids (Monday-Friday) count toward averages and games played."
+                  )
                 )
               );
             })(),
@@ -583,7 +595,7 @@ const ImmaculateGridTracker = () => {
                                 "span",
                                 { className: "flex items-center gap-1" },
                                 e(Hash, { className: "w-4 h-4" }),
-                                `Games: ${player.gamesPlayed}`
+                                `Weekday Games: ${player.gamesPlayed}`
                               )
                             )
                           )
