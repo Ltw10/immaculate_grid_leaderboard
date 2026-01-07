@@ -7,6 +7,7 @@ create table scores (
   player_name text not null,
   score int not null,
   grid_date date not null,
+  image_url text,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
 );
