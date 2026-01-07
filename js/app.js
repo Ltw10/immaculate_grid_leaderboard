@@ -17,7 +17,13 @@ const ImmaculateGridTracker = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [newScore, setNewScore] = useState({
     name: "",
-    date: new Date().toISOString().split("T")[0],
+    date: (() => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    })(),
     score: "",
     imageFile: null,
   });
@@ -27,6 +33,45 @@ const ImmaculateGridTracker = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Helper to get today's date in local timezone (YYYY-MM-DD format)
+  const getTodayLocal = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper to normalize date strings to YYYY-MM-DD format (preserving local date, not UTC)
+  const normalizeDateString = (dateStr) => {
+    if (!dateStr) return null;
+    // If it's already in YYYY-MM-DD format, return as is
+    if (typeof dateStr === "string" && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateStr;
+    }
+    // If it's a Date object, convert to local date string
+    if (dateStr instanceof Date) {
+      const year = dateStr.getFullYear();
+      const month = String(dateStr.getMonth() + 1).padStart(2, "0");
+      const day = String(dateStr.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+    // Try to parse as date and format in local timezone
+    try {
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        // Use local date methods, not UTC
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {
+      // If parsing fails, return original
+    }
+    return dateStr;
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -40,20 +85,21 @@ const ImmaculateGridTracker = () => {
         if (!playersObj[score.name]) {
           playersObj[score.name] = {};
         }
-        playersObj[score.name][score.date] = score.score;
-        
+        // Normalize the date when storing
+        const normalizedDate = normalizeDateString(score.date);
+        playersObj[score.name][normalizedDate] = score.score;
+
         // Store image URLs
         if (!imagesObj[score.name]) {
           imagesObj[score.name] = {};
         }
         if (score.imageUrl) {
-          imagesObj[score.name][score.date] = score.imageUrl;
+          imagesObj[score.name][normalizedDate] = score.imageUrl;
         }
       });
-      
+
       setPlayerImages(imagesObj);
 
-      console.log("Data loaded:", playersObj);
       setPlayers(playersObj);
     } catch (error) {
       console.error("Error loading data:", error);
@@ -108,9 +154,9 @@ const ImmaculateGridTracker = () => {
 
         // If there's an image file, upload it
         if (newScore.imageFile) {
-          const today = new Date().toISOString().split("T")[0];
+          const today = getTodayLocal();
           const isCurrentDay = newScore.date === today;
-          
+
           // Check if we can upload this image
           const canUpload = await window.storage.manageImageStorage(
             newScore.name,
@@ -118,16 +164,16 @@ const ImmaculateGridTracker = () => {
             score,
             isCurrentDay
           );
-          
+
           if (canUpload.canUpload) {
             const imageResult = await window.storage.uploadImage(
               newScore.name,
               newScore.date,
               newScore.imageFile
             );
-            
+
             if (!imageResult.success) {
-              console.warn("Failed to upload image:", imageResult.message);
+              // Image upload failed but score was saved
               // Don't fail the whole operation if image upload fails
             }
           } else {
@@ -135,13 +181,13 @@ const ImmaculateGridTracker = () => {
             // Continue anyway - score is saved
           }
         }
-        
+
         // Reload data to get latest from server
         await loadData();
 
         setNewScore({
           name: "",
-          date: new Date().toISOString().split("T")[0],
+          date: getTodayLocal(),
           score: "",
           imageFile: null,
         });
@@ -181,11 +227,11 @@ const ImmaculateGridTracker = () => {
     const weekdayScores = Object.entries(playerScores)
       .filter(([date]) => isWeekday(date))
       .map(([, score]) => score);
-    
+
     if (weekdayScores.length === 0) {
       return { average: 0, gamesPlayed: 0, total: 0 };
     }
-    
+
     const total = weekdayScores.reduce((sum, score) => sum + score, 0);
     const average = (total / weekdayScores.length).toFixed(2);
     const gamesPlayed = weekdayScores.length;
@@ -205,14 +251,14 @@ const ImmaculateGridTracker = () => {
   const getPlayerHistory = (name) => {
     if (!players[name]) return [];
     return Object.entries(players[name])
-      .map(([date, score]) => ({ 
-        date, 
+      .map(([date, score]) => ({
+        date,
         score,
-        imageUrl: playerImages[name]?.[date] || null
+        imageUrl: playerImages[name]?.[date] || null,
       }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   };
-  
+
   const handleEditScore = (playerName, date, score, imageUrl) => {
     setEditingScore({
       name: playerName,
@@ -222,15 +268,15 @@ const ImmaculateGridTracker = () => {
     });
     setShowEditModal(true);
   };
-  
+
   const handleImageUpload = async (file) => {
     if (!editingScore) return;
-    
+
     setUploadingImage(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayLocal();
       const isCurrentDay = editingScore.date === today;
-      
+
       // Check if we can upload this image
       const canUpload = await window.storage.manageImageStorage(
         editingScore.name,
@@ -238,75 +284,75 @@ const ImmaculateGridTracker = () => {
         editingScore.score,
         isCurrentDay
       );
-      
+
       if (!canUpload.canUpload) {
-        alert(canUpload.message || 'Cannot upload image for this score.');
+        alert(canUpload.message || "Cannot upload image for this score.");
         setUploadingImage(false);
         return;
       }
-      
+
       // Upload the image
       const result = await window.storage.uploadImage(
         editingScore.name,
         editingScore.date,
         file
       );
-      
+
       if (result.success) {
         // Reload data to get latest from server
         await loadData();
         // Update editing score
         setEditingScore({ ...editingScore, imageUrl: result.imageUrl });
-        alert('Image uploaded successfully!');
+        alert("Image uploaded successfully!");
       } else {
-        alert('Failed to upload image: ' + result.message);
+        alert("Failed to upload image: " + result.message);
       }
     } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Failed to upload image. Please try again.');
+      console.error("Error uploading image:", error);
+      alert("Failed to upload image. Please try again.");
     } finally {
       setUploadingImage(false);
     }
   };
-  
+
   const handleDeleteImage = async () => {
     if (!editingScore) return;
-    
-    if (!confirm('Delete this grid image?')) return;
-    
+
+    if (!confirm("Delete this grid image?")) return;
+
     setUploadingImage(true);
     try {
       const result = await window.storage.deleteImage(
         editingScore.name,
         editingScore.date
       );
-      
+
       if (result.success) {
         // Reload data to get latest from server
         await loadData();
         // Update editing score
         setEditingScore({ ...editingScore, imageUrl: null });
-        alert('Image deleted successfully!');
+        alert("Image deleted successfully!");
       } else {
-        alert('Failed to delete image: ' + result.message);
+        alert("Failed to delete image: " + result.message);
       }
     } catch (error) {
-      console.error('Error deleting image:', error);
-      alert('Failed to delete image. Please try again.');
+      console.error("Error deleting image:", error);
+      alert("Failed to delete image. Please try again.");
     } finally {
       setUploadingImage(false);
     }
   };
-  
+
   const handleUpdateScore = async () => {
     if (!editingScore) return;
-    
+
     const score = parseInt(editingScore.score);
     if (isNaN(score) || score < 0 || score > 900) {
-      alert('Score must be a number between 0 and 900');
+      alert("Score must be a number between 0 and 900");
       return;
     }
-    
+
     setSaving(true);
     try {
       const result = await window.storage.update(
@@ -314,36 +360,42 @@ const ImmaculateGridTracker = () => {
         editingScore.date,
         score
       );
-      
+
       if (result.success) {
         // Reload data to get latest from server
         await loadData();
         // Update editing score
         setEditingScore({ ...editingScore, score: score });
-        alert('Score updated successfully!');
+        alert("Score updated successfully!");
       } else {
-        alert('Failed to update score: ' + result.message);
+        alert("Failed to update score: " + result.message);
       }
     } catch (error) {
-      console.error('Error updating score:', error);
-      alert('Failed to update score. Please try again.');
+      console.error("Error updating score:", error);
+      alert("Failed to update score. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const getTodaysScores = () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayLocal();
     const todaysScores = [];
+
     Object.entries(players).forEach(([name, scores]) => {
-      if (scores[today] !== undefined) {
-        todaysScores.push({
-          name,
-          score: scores[today],
-          date: today,
-        });
-      }
+      Object.entries(scores).forEach(([date, score]) => {
+        // Dates are already normalized when loaded, so direct comparison should work
+        if (date === today) {
+          todaysScores.push({
+            name,
+            score: score,
+            date: date,
+            imageUrl: playerImages[name]?.[date] || null,
+          });
+        }
+      });
     });
+
     return todaysScores.sort((a, b) => a.score - b.score);
   };
 
@@ -448,7 +500,7 @@ const ImmaculateGridTracker = () => {
                   onClick: () => {
                     setNewScore({
                       name: "",
-                      date: new Date().toISOString().split("T")[0],
+                      date: getTodayLocal(),
                       score: "",
                       imageFile: null,
                     });
@@ -468,7 +520,7 @@ const ImmaculateGridTracker = () => {
                   onClick: () => {
                     setNewScore({
                       name: "",
-                      date: new Date().toISOString().split("T")[0],
+                      date: getTodayLocal(),
                       score: "",
                       imageFile: null,
                     });
@@ -634,7 +686,7 @@ const ImmaculateGridTracker = () => {
                       setIsTodaysScore(false);
                       setNewScore({
                         name: "",
-                        date: new Date().toISOString().split("T")[0],
+                        date: getTodayLocal(),
                         score: "",
                         imageFile: null,
                       });
@@ -658,72 +710,95 @@ const ImmaculateGridTracker = () => {
               return e(
                 "div",
                 null,
-                todaysScores.length > 0 &&
+                e(
+                  "div",
+                  {
+                    className:
+                      "bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg mb-6 border-2 border-green-200",
+                  },
                   e(
                     "div",
-                    {
-                      className:
-                        "bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg mb-6 border-2 border-green-200",
-                    },
+                    { className: "flex items-center justify-between mb-3" },
                     e(
-                      "div",
-                      { className: "flex items-center justify-between mb-3" },
-                      e(
-                        "h3",
-                        {
-                          className:
-                            "text-lg font-bold text-gray-800 flex items-center gap-2",
-                        },
-                        e(Calendar, { className: "w-5 h-5 text-green-600" }),
-                        "Today's Scores"
-                      ),
-                      e(
-                        "span",
-                        { className: "text-sm text-gray-600" },
-                        new Date().toLocaleDateString("en-US", {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })
-                      )
-                    ),
-                    e(
-                      "div",
+                      "h3",
                       {
                         className:
-                          "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+                          "text-lg font-bold text-gray-800 flex items-center gap-2",
                       },
-                      todaysScores.map(({ name, score }) =>
-                        e(
-                          "div",
-                          {
-                            key: name,
-                            className:
-                              "bg-white p-3 rounded-lg border border-green-200 flex items-center justify-between",
-                          },
+                      e(Calendar, { className: "w-5 h-5 text-green-600" }),
+                      "Today's Scores"
+                    ),
+                    e(
+                      "span",
+                      { className: "text-sm text-gray-600" },
+                      new Date().toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
+                    )
+                  ),
+                  todaysScores.length > 0
+                    ? e(
+                        "div",
+                        {
+                          className:
+                            "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+                        },
+                        todaysScores.map(({ name, score, imageUrl }) =>
                           e(
-                            "span",
-                            { className: "font-medium text-gray-800" },
-                            name
-                          ),
-                          e(
-                            "span",
+                            "div",
                             {
-                              className: `text-lg font-bold ${
-                                score <= 100
-                                  ? "text-green-600"
-                                  : score <= 300
-                                  ? "text-yellow-600"
-                                  : "text-red-600"
-                              }`,
+                              key: name,
+                              className:
+                                "bg-white p-3 rounded-lg border border-green-200 flex items-center justify-between",
                             },
-                            score
+                            e(
+                              "div",
+                              { className: "flex items-center gap-2" },
+                              e(
+                                "span",
+                                { className: "font-medium text-gray-800" },
+                                name
+                              ),
+                              imageUrl &&
+                                e(
+                                  "span",
+                                  {
+                                    className:
+                                      "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded cursor-pointer hover:bg-blue-200",
+                                    title: "Click to view image",
+                                    onClick: (e) => {
+                                      e.stopPropagation();
+                                      setViewingImage(imageUrl);
+                                    },
+                                  },
+                                  "📷"
+                                )
+                            ),
+                            e(
+                              "span",
+                              {
+                                className: `text-lg font-bold ${
+                                  score <= 100
+                                    ? "text-green-600"
+                                    : score <= 300
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
+                                }`,
+                              },
+                              score
+                            )
                           )
                         )
                       )
-                    )
-                  ),
+                    : e(
+                        "div",
+                        { className: "text-center py-4 text-gray-500" },
+                        "No scores for today yet. Be the first to add one!"
+                      )
+                ),
                 e(
                   "div",
                   { className: "mb-4" },
@@ -735,8 +810,7 @@ const ImmaculateGridTracker = () => {
                   e(
                     "p",
                     {
-                      className:
-                        "text-sm text-gray-600 italic",
+                      className: "text-sm text-gray-600 italic",
                     },
                     "Note: Only weekday grids (Monday-Friday) count toward averages and games played."
                   )
@@ -887,74 +961,80 @@ const ImmaculateGridTracker = () => {
             e(
               "div",
               { className: "space-y-2" },
-              getPlayerHistory(selectedPlayer).map(({ date, score, imageUrl }) =>
-                e(
-                  "div",
-                  {
-                    key: date,
-                    className:
-                      "flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 hover:border-orange-300 transition-colors cursor-pointer",
-                    onClick: () => handleEditScore(selectedPlayer, date, score, imageUrl),
-                  },
+              getPlayerHistory(selectedPlayer).map(
+                ({ date, score, imageUrl }) =>
                   e(
                     "div",
-                    { className: "flex items-center gap-3" },
-                    e(Calendar, { className: "w-5 h-5 text-gray-400" }),
+                    {
+                      key: date,
+                      className:
+                        "flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 hover:border-orange-300 transition-colors cursor-pointer",
+                      onClick: () =>
+                        handleEditScore(selectedPlayer, date, score, imageUrl),
+                    },
                     e(
-                      "span",
-                      { className: "font-medium text-gray-700" },
-                      new Date(date + "T00:00:00").toLocaleDateString("en-US", {
-                        weekday: "short",
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
+                      "div",
+                      { className: "flex items-center gap-3" },
+                      e(Calendar, { className: "w-5 h-5 text-gray-400" }),
+                      e(
+                        "span",
+                        { className: "font-medium text-gray-700" },
+                        new Date(date + "T00:00:00").toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "short",
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          }
+                        )
+                      ),
+                      imageUrl &&
+                        e(
+                          "span",
+                          {
+                            className:
+                              "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded cursor-pointer hover:bg-blue-200",
+                            title: "Click to view image",
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              setViewingImage(imageUrl);
+                            },
+                          },
+                          "📷"
+                        )
                     ),
-                    imageUrl &&
+                    e(
+                      "div",
+                      { className: "flex items-center gap-3" },
                       e(
                         "span",
                         {
-                          className: "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded cursor-pointer hover:bg-blue-200",
-                          title: "Click to view image",
+                          className: `text-xl font-bold ${
+                            score <= 100
+                              ? "text-green-500"
+                              : score <= 300
+                              ? "text-yellow-500"
+                              : "text-red-500"
+                          }`,
+                        },
+                        score
+                      ),
+                      e(
+                        "button",
+                        {
                           onClick: (e) => {
                             e.stopPropagation();
-                            setViewingImage(imageUrl);
+                            deleteScore(selectedPlayer, date);
                           },
+                          disabled: saving,
+                          className:
+                            "text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50",
                         },
-                        "📷"
+                        "Delete"
                       )
-                  ),
-                  e(
-                    "div",
-                    { className: "flex items-center gap-3" },
-                    e(
-                      "span",
-                      {
-                        className: `text-xl font-bold ${
-                          score <= 100
-                            ? "text-green-500"
-                            : score <= 300
-                            ? "text-yellow-500"
-                            : "text-red-500"
-                        }`,
-                      },
-                      score
-                    ),
-                    e(
-                      "button",
-                      {
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          deleteScore(selectedPlayer, date);
-                        },
-                        disabled: saving,
-                        className:
-                          "text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50",
-                      },
-                      "Delete"
                     )
                   )
-                )
               )
             )
           )
@@ -1057,15 +1137,13 @@ const ImmaculateGridTracker = () => {
                   e(
                     "div",
                     { className: "mb-4" },
-                    e(
-                      "img",
-                      {
-                        src: editingScore.imageUrl,
-                        alt: "Grid image",
-                        className: "w-full rounded-lg border border-gray-300 mb-2 cursor-pointer hover:opacity-90",
-                        onClick: () => setViewingImage(editingScore.imageUrl),
-                      }
-                    ),
+                    e("img", {
+                      src: editingScore.imageUrl,
+                      alt: "Grid image",
+                      className:
+                        "w-full rounded-lg border border-gray-300 mb-2 cursor-pointer hover:opacity-90",
+                      onClick: () => setViewingImage(editingScore.imageUrl),
+                    }),
                     e(
                       "button",
                       {
@@ -1083,8 +1161,7 @@ const ImmaculateGridTracker = () => {
                   e(
                     "label",
                     {
-                      className:
-                        "block text-sm font-medium text-gray-700 mb-2",
+                      className: "block text-sm font-medium text-gray-700 mb-2",
                     },
                     "Upload Grid Image"
                   ),
@@ -1165,6 +1242,4 @@ const ImmaculateGridTracker = () => {
   );
 };
 
-console.log("Rendering app...");
 ReactDOM.render(e(ImmaculateGridTracker), document.getElementById("root"));
-console.log("App rendered successfully!");
