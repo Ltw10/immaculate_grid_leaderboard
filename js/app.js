@@ -467,31 +467,34 @@ const ImmaculateGridTracker = () => {
         { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
         e(
           "div",
-          { className: "flex items-center justify-between mb-6" },
+          { className: "mb-6" },
           e(
             "div",
-            { className: "flex items-center gap-3" },
-            e(Trophy, { className: "w-8 h-8 text-orange-500" }),
+            { className: "flex items-center gap-3 mb-4 sm:mb-0" },
+            e(Trophy, { className: "w-6 h-6 sm:w-8 sm:h-8 text-orange-500" }),
             e(
               "h1",
-              { className: "text-3xl font-bold text-gray-800" },
+              {
+                className:
+                  "text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800",
+              },
               "Immaculate Grid Tracker"
             )
           ),
           e(
             "div",
-            { className: "flex gap-2" },
+            { className: "flex flex-wrap gap-2" },
             view === "leaderboard" &&
               e(
                 "button",
                 {
                   onClick: loadData,
                   className:
-                    "bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                    "bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
                   disabled: loading,
                 },
-                e(RefreshCw, { className: "w-5 h-5" }),
-                "Refresh"
+                e(RefreshCw, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
+                e("span", { className: "hidden sm:inline" }, "Refresh")
               ),
             view === "leaderboard" &&
               e(
@@ -508,10 +511,15 @@ const ImmaculateGridTracker = () => {
                     setShowAddScore(true);
                   },
                   className:
-                    "bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                    "bg-green-500 hover:bg-green-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
                 },
-                e(Calendar, { className: "w-5 h-5" }),
-                "Add Today's Score"
+                e(Calendar, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
+                e(
+                  "span",
+                  { className: "hidden sm:inline" },
+                  "Add Today's Score"
+                ),
+                e("span", { className: "sm:hidden" }, "Today")
               ),
             view === "leaderboard" &&
               e(
@@ -528,10 +536,11 @@ const ImmaculateGridTracker = () => {
                     setShowAddScore(true);
                   },
                   className:
-                    "bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                    "bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
                 },
-                e(Plus, { className: "w-5 h-5" }),
-                "Add Score"
+                e(Plus, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
+                e("span", { className: "hidden sm:inline" }, "Add Score"),
+                e("span", { className: "sm:hidden" }, "Add")
               ),
             view === "player" &&
               e(
@@ -542,10 +551,10 @@ const ImmaculateGridTracker = () => {
                     setSelectedPlayer(null);
                   },
                   className:
-                    "bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                    "bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
                 },
-                e(ArrowLeft, { className: "w-5 h-5" }),
-                "Back"
+                e(ArrowLeft, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
+                e("span", { className: "hidden sm:inline" }, "Back")
               )
           )
         ),
