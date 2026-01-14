@@ -854,14 +854,20 @@ const ImmaculateGridTracker = () => {
                       },
                       e(
                         "div",
-                        { className: "flex items-center justify-between" },
+                        {
+                          className:
+                            "flex items-center justify-between gap-2 sm:gap-4",
+                        },
                         e(
                           "div",
-                          { className: "flex items-center gap-4" },
+                          {
+                            className:
+                              "flex items-center gap-2 sm:gap-4 min-w-0 flex-1",
+                          },
                           e(
                             "div",
                             {
-                              className: `text-2xl font-bold ${
+                              className: `text-lg sm:text-2xl font-bold flex-shrink-0 ${
                                 index === 0
                                   ? "text-yellow-500"
                                   : index === 1
@@ -875,41 +881,60 @@ const ImmaculateGridTracker = () => {
                           ),
                           e(
                             "div",
-                            null,
+                            { className: "min-w-0 flex-1" },
                             e(
                               "h3",
-                              { className: "text-lg font-bold text-gray-800" },
+                              {
+                                className:
+                                  "text-base sm:text-lg font-bold text-gray-800 truncate",
+                              },
                               player.name
                             ),
                             e(
                               "div",
-                              { className: "flex gap-4 text-sm text-gray-600" },
+                              {
+                                className:
+                                  "flex flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600",
+                              },
                               e(
                                 "span",
                                 { className: "flex items-center gap-1" },
-                                e(TrendingDown, { className: "w-4 h-4" }),
+                                e(TrendingDown, {
+                                  className: "w-3 h-3 sm:w-4 sm:h-4",
+                                }),
                                 `Avg: ${player.average}`
                               ),
                               e(
                                 "span",
                                 { className: "flex items-center gap-1" },
-                                e(Hash, { className: "w-4 h-4" }),
-                                `Weekday Games: ${player.gamesPlayed}`
+                                e(Hash, { className: "w-3 h-3 sm:w-4 sm:h-4" }),
+                                e(
+                                  "span",
+                                  { className: "hidden sm:inline" },
+                                  "Weekday "
+                                ),
+                                `Games: ${player.gamesPlayed}`
                               )
                             )
                           )
                         ),
                         e(
                           "div",
-                          { className: "text-right" },
+                          { className: "text-right flex-shrink-0" },
                           e(
                             "div",
-                            { className: "text-3xl font-bold text-orange-500" },
+                            {
+                              className:
+                                "text-xl sm:text-2xl lg:text-3xl font-bold text-orange-500",
+                            },
                             player.average
                           ),
                           e(
                             "div",
-                            { className: "text-xs text-gray-500" },
+                            {
+                              className:
+                                "text-xs text-gray-500 hidden sm:block",
+                            },
                             "average"
                           )
                         )
