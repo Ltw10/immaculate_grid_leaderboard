@@ -298,13 +298,38 @@ const ImmaculateGridTracker = () => {
 
   const getPlayerHistory = (name) => {
     if (!players[name]) return [];
-    return Object.entries(players[name])
+    
+    const actualScores = Object.entries(players[name])
       .map(([date, score]) => ({
         date,
         score,
         imageUrl: playerImages[name]?.[date] || null,
-      }))
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
+        isAutoScored: false,
+      }));
+    
+    // Find missed weekdays and add them with 900 scores
+    const allDates = Object.keys(players[name]).filter(isWeekday);
+    if (allDates.length > 0) {
+      const firstDate = allDates.sort()[0];
+      const today = getTodayLocal();
+      const allWeekdays = getWeekdaysBetween(firstDate, today);
+      
+      // Add missed weekdays as auto-scored 900s
+      const missedWeekdays = allWeekdays
+        .filter(date => !players[name][date])
+        .map(date => ({
+          date,
+          score: 900,
+          imageUrl: null,
+          isAutoScored: true,
+        }));
+      
+      // Combine actual scores and auto-scored missed days
+      const allScores = [...actualScores, ...missedWeekdays];
+      return allScores.sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
+    
+    return actualScores.sort((a, b) => new Date(b.date) - new Date(a.date));
   };
 
   const handleEditScore = (playerName, date, score, imageUrl) => {
@@ -1061,32 +1086,50 @@ const ImmaculateGridTracker = () => {
               "div",
               { className: "space-y-2" },
               getPlayerHistory(selectedPlayer).map(
-                ({ date, score, imageUrl }) =>
+                ({ date, score, imageUrl, isAutoScored }) =>
                   e(
                     "div",
                     {
                       key: date,
-                      className:
-                        "flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 hover:border-orange-300 transition-colors cursor-pointer",
-                      onClick: () =>
-                        handleEditScore(selectedPlayer, date, score, imageUrl),
+                      className: `flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                        isAutoScored
+                          ? "bg-gray-100 border-gray-300 opacity-75 cursor-not-allowed"
+                          : "bg-white border-gray-200 hover:border-orange-300 cursor-pointer"
+                      }`,
+                      onClick: isAutoScored
+                        ? undefined
+                        : () => handleEditScore(selectedPlayer, date, score, imageUrl),
                     },
                     e(
                       "div",
                       { className: "flex items-center gap-3" },
                       e(Calendar, { className: "w-5 h-5 text-gray-400" }),
                       e(
-                        "span",
-                        { className: "font-medium text-gray-700" },
-                        new Date(date + "T00:00:00").toLocaleDateString(
-                          "en-US",
-                          {
-                            weekday: "short",
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                          }
-                        )
+                        "div",
+                        { className: "flex items-center gap-2" },
+                        e(
+                          "span",
+                          { className: "font-medium text-gray-700" },
+                          new Date(date + "T00:00:00").toLocaleDateString(
+                            "en-US",
+                            {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            }
+                          )
+                        ),
+                        isAutoScored &&
+                          e(
+                            "span",
+                            {
+                              className:
+                                "text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded",
+                              title: "Auto-scored (missed day)",
+                            },
+                            "Missed"
+                          )
                       ),
                       imageUrl &&
                         e(
@@ -1107,31 +1150,47 @@ const ImmaculateGridTracker = () => {
                       "div",
                       { className: "flex items-center gap-3" },
                       e(
-                        "span",
-                        {
-                          className: `text-xl font-bold ${
-                            score <= 100
-                              ? "text-green-500"
-                              : score <= 300
-                              ? "text-yellow-500"
-                              : "text-red-500"
-                          }`,
-                        },
-                        score
-                      ),
-                      e(
-                        "button",
-                        {
-                          onClick: (e) => {
-                            e.stopPropagation();
-                            deleteScore(selectedPlayer, date);
+                        "div",
+                        { className: "flex items-center gap-2" },
+                        e(
+                          "span",
+                          {
+                            className: `text-xl font-bold ${
+                              isAutoScored
+                                ? "text-gray-500 line-through"
+                                : score <= 100
+                                ? "text-green-500"
+                                : score <= 300
+                                ? "text-yellow-500"
+                                : "text-red-500"
+                            }`,
                           },
-                          disabled: saving,
-                          className:
-                            "text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50",
-                        },
-                        "Delete"
-                      )
+                          score
+                        ),
+                        isAutoScored &&
+                          e(
+                            "span",
+                            {
+                              className: "text-xs text-gray-500 italic",
+                              title: "Auto-scored 900 for missed weekday",
+                            },
+                            "(auto)"
+                          )
+                      ),
+                      !isAutoScored &&
+                        e(
+                          "button",
+                          {
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              deleteScore(selectedPlayer, date);
+                            },
+                            disabled: saving,
+                            className:
+                              "text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50",
+                          },
+                          "Delete"
+                        )
                     )
                   )
               )
