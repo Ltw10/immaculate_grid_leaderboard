@@ -221,7 +221,30 @@ const ImmaculateGridTracker = () => {
     return { average: parseFloat(average), gamesPlayed, total };
   };
 
-  // Calculate stats for leaderboard (only weekdays)
+  // Helper to get all weekdays between two dates (inclusive)
+  const getWeekdaysBetween = (startDate, endDate) => {
+    const weekdays = [];
+    const start = new Date(startDate + "T00:00:00");
+    const end = new Date(endDate + "T00:00:00");
+    const current = new Date(start);
+
+    while (current <= end) {
+      // Use local date methods to avoid timezone issues
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, "0");
+      const day = String(current.getDate()).padStart(2, "0");
+      const dateStr = `${year}-${month}-${day}`;
+
+      if (isWeekday(dateStr)) {
+        weekdays.push(dateStr);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    return weekdays;
+  };
+
+  // Calculate stats for leaderboard (only weekdays, with auto-900 for missed days)
   const calculateLeaderboardStats = (playerScores) => {
     // Filter to only include weekday scores
     const weekdayScores = Object.entries(playerScores)
@@ -229,13 +252,38 @@ const ImmaculateGridTracker = () => {
       .map(([, score]) => score);
 
     if (weekdayScores.length === 0) {
-      return { average: 0, gamesPlayed: 0, total: 0 };
+      return { average: 0, gamesPlayed: 0, total: 0, missedDays: 0 };
     }
 
-    const total = weekdayScores.reduce((sum, score) => sum + score, 0);
-    const average = (total / weekdayScores.length).toFixed(2);
+    // Find the first score date and today
+    const allDates = Object.keys(playerScores).filter(isWeekday);
+    if (allDates.length === 0) {
+      return { average: 0, gamesPlayed: 0, total: 0, missedDays: 0 };
+    }
+
+    const firstDate = allDates.sort()[0];
+    const today = getTodayLocal();
+
+    // Get all weekdays from first score to today
+    const allWeekdays = getWeekdaysBetween(firstDate, today);
+
+    // Count missed days (weekdays without scores)
+    const missedDays = allWeekdays.filter((date) => !playerScores[date]).length;
+
+    // Add 900 for each missed weekday when calculating average
+    const totalWithMissed =
+      weekdayScores.reduce((sum, score) => sum + score, 0) + missedDays * 900;
+    const totalWeekdays = weekdayScores.length + missedDays;
+    const average =
+      totalWeekdays > 0 ? (totalWithMissed / totalWeekdays).toFixed(2) : 0;
     const gamesPlayed = weekdayScores.length;
-    return { average: parseFloat(average), gamesPlayed, total };
+
+    return {
+      average: parseFloat(average),
+      gamesPlayed,
+      total: totalWithMissed,
+      missedDays,
+    };
   };
 
   const getLeaderboard = () => {
@@ -914,7 +962,24 @@ const ImmaculateGridTracker = () => {
                                   "Weekday "
                                 ),
                                 `Games: ${player.gamesPlayed}`
-                              )
+                              ),
+                              player.missedDays > 0 &&
+                                e(
+                                  "span",
+                                  {
+                                    className:
+                                      "flex items-center gap-1 text-red-600 font-medium",
+                                    title:
+                                      "Missed weekday grids (auto-scored as 900)",
+                                  },
+                                  "⚠️",
+                                  e(
+                                    "span",
+                                    { className: "hidden sm:inline" },
+                                    "Missed: "
+                                  ),
+                                  player.missedDays
+                                )
                             )
                           )
                         ),
