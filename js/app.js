@@ -34,7 +34,51 @@ const ImmaculateGridTracker = () => {
     loadData();
   }, []);
 
-  // Helper to get today's date in local timezone (YYYY-MM-DD format)
+  // Helper to get today's date in EST/EDT timezone (YYYY-MM-DD format)
+  // Uses America/New_York timezone which automatically handles EST/EDT
+  const getTodayEST = () => {
+    const now = new Date();
+    // Format date in America/New_York timezone
+    // EST is UTC-5, EDT is UTC-4, but we'll use a more reliable method
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+    
+    return `${year}-${month}-${day}`;
+  };
+  
+  // Helper to get yesterday's date in EST/EDT timezone
+  const getYesterdayEST = () => {
+    const now = new Date();
+    // Subtract one day
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Format date in America/New_York timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    const parts = formatter.formatToParts(yesterday);
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+    
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper to get today's date in local timezone (YYYY-MM-DD format) - kept for compatibility
   const getTodayLocal = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -262,13 +306,27 @@ const ImmaculateGridTracker = () => {
     }
 
     const firstDate = allDates.sort()[0];
-    const today = getTodayLocal();
+    const todayEST = getTodayEST();
 
-    // Get all weekdays from first score to today
-    const allWeekdays = getWeekdaysBetween(firstDate, today);
+    // Get all weekdays from first score to yesterday (EST) - don't include today
+    // We need to get yesterday in EST
+    const yesterdayEST = (() => {
+      const now = new Date();
+      const estOffset = -5;
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const estTime = new Date(utc + (estOffset * 3600000));
+      estTime.setUTCDate(estTime.getUTCDate() - 1);
+      const year = estTime.getUTCFullYear();
+      const month = String(estTime.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(estTime.getUTCDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    })();
+    
+    const endDate = firstDate <= yesterdayEST ? yesterdayEST : firstDate;
+    const allWeekdays = getWeekdaysBetween(firstDate, endDate);
 
-    // Count missed days (weekdays without scores)
-    const missedDays = allWeekdays.filter((date) => !playerScores[date]).length;
+    // Count missed days (weekdays without scores, excluding today)
+    const missedDays = allWeekdays.filter((date) => !playerScores[date] && date < todayEST).length;
 
     // Add 900 for each missed weekday when calculating average
     const totalWithMissed =
@@ -311,12 +369,17 @@ const ImmaculateGridTracker = () => {
     const allDates = Object.keys(players[name]).filter(isWeekday);
     if (allDates.length > 0) {
       const firstDate = allDates.sort()[0];
-      const today = getTodayLocal();
-      const allWeekdays = getWeekdaysBetween(firstDate, today);
+      const todayEST = getTodayEST();
       
-      // Add missed weekdays as auto-scored 900s
+    // Get yesterday in EST (don't include today)
+    const yesterdayEST = getYesterdayEST();
+      
+      const endDate = firstDate <= yesterdayEST ? yesterdayEST : firstDate;
+      const allWeekdays = getWeekdaysBetween(firstDate, endDate);
+      
+      // Add missed weekdays as auto-scored 900s (only for past days, not today)
       const missedWeekdays = allWeekdays
-        .filter(date => !players[name][date])
+        .filter(date => !players[name][date] && date < todayEST)
         .map(date => ({
           date,
           score: 900,
@@ -452,7 +515,7 @@ const ImmaculateGridTracker = () => {
   };
 
   const getTodaysScores = () => {
-    const today = getTodayLocal();
+    const today = getTodayEST(); // Use EST for consistency
     const todaysScores = [];
 
     Object.entries(players).forEach(([name, scores]) => {
