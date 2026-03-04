@@ -29,6 +29,7 @@ const ImmaculateGridTracker = () => {
   });
   const [playerImages, setPlayerImages] = useState({}); // Store image URLs by player and date
   const [viewingImage, setViewingImage] = useState(null); // Image URL to view in modal
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState("weekly"); // "weekly" | "monthly" | "all-time"
 
   useEffect(() => {
     loadData();
@@ -76,6 +77,43 @@ const ImmaculateGridTracker = () => {
     const day = parts.find(p => p.type === 'day').value;
     
     return `${year}-${month}-${day}`;
+  };
+
+  // Helper to get start of current week (Monday) in EST
+  const getWeekStartEST = () => {
+    const yesterday = getYesterdayEST();
+    const [y, m, d] = yesterday.split("-").map(Number);
+    // Find Monday: iterate back from yesterday (up to 7 days)
+    for (let offset = 0; offset < 7; offset++) {
+      const checkDate = new Date(Date.UTC(y, m - 1, d - offset, 12, 0, 0));
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        weekday: "short",
+      });
+      const weekday = formatter.format(checkDate);
+      if (weekday === "Mon") {
+        const ys = String(checkDate.getUTCFullYear());
+        const ms = String(checkDate.getUTCMonth() + 1).padStart(2, "0");
+        const ds = String(checkDate.getUTCDate()).padStart(2, "0");
+        return `${ys}-${ms}-${ds}`;
+      }
+    }
+    return yesterday;
+  };
+
+  // Helper to get start of current month in EST
+  const getMonthStartEST = () => {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const now = new Date();
+    const parts = formatter.formatToParts(now);
+    const year = parts.find((p) => p.type === "year").value;
+    const month = parts.find((p) => p.type === "month").value;
+    return `${year}-${month}-01`;
   };
 
   // Helper to get today's date in local timezone (YYYY-MM-DD format) - kept for compatibility
@@ -344,6 +382,35 @@ const ImmaculateGridTracker = () => {
     };
   };
 
+  // Calculate leaderboard stats for a date range (weekdays only, with auto-900 for missed days)
+  // Includes today's scores in the period; 900 for missed days only applies to days that are over (before today EST)
+  const calculateLeaderboardStatsForPeriod = (playerScores, startDate, endDate) => {
+    const todayEST = getTodayEST();
+    const yesterdayEST = getYesterdayEST();
+    // Include scores through endDate (so today's scores count when endDate is today)
+    const endForScores = endDate > todayEST ? todayEST : endDate;
+    if (startDate > endForScores) {
+      return { average: 0, gamesPlayed: 0, total: 0, missedDays: 0 };
+    }
+    const weekdayScores = Object.entries(playerScores)
+      .filter(([date]) => isWeekday(date) && date >= startDate && date <= endForScores)
+      .map(([, score]) => score);
+    // Missed days only through yesterday (never add 900 for today until the day is over)
+    const endForMissed = endDate > yesterdayEST ? yesterdayEST : endDate;
+    const allWeekdaysForMissed =
+      startDate <= endForMissed ? getWeekdaysBetween(startDate, endForMissed) : [];
+    const missedDays = allWeekdaysForMissed.filter((date) => !playerScores[date]).length;
+    const totalWithMissed = weekdayScores.reduce((s, n) => s + n, 0) + missedDays * 900;
+    const totalDays = weekdayScores.length + missedDays;
+    const average = totalDays > 0 ? (totalWithMissed / totalDays).toFixed(2) : 0;
+    return {
+      average: parseFloat(average),
+      gamesPlayed: weekdayScores.length,
+      total: totalWithMissed,
+      missedDays,
+    };
+  };
+
   const getLeaderboard = () => {
     return Object.entries(players)
       .map(([name, scores]) => ({
@@ -351,6 +418,25 @@ const ImmaculateGridTracker = () => {
         ...calculateLeaderboardStats(scores),
       }))
       .filter((player) => player.gamesPlayed > 0) // Only show players with weekday scores
+      .sort((a, b) => a.average - b.average);
+  };
+
+  const getLeaderboardForPeriod = (period) => {
+    if (period === "all-time") {
+      return getLeaderboard();
+    }
+    const startDate = period === "weekly" ? getWeekStartEST() : getMonthStartEST();
+    // Use today as end date so today's submitted scores count toward weekly/monthly leaderboards
+    const endDate = getTodayEST();
+    return Object.entries(players)
+      .map(([name, scores]) => ({
+        name,
+        ...calculateLeaderboardStatsForPeriod(scores, startDate, endDate),
+      }))
+      .filter(
+        (player) =>
+          player.gamesPlayed > 0 // Only show players with at least one submitted score in this period
+      )
       .sort((a, b) => a.average - b.average);
   };
 
@@ -564,7 +650,7 @@ const ImmaculateGridTracker = () => {
     }
   };
 
-  const leaderboard = getLeaderboard();
+  const leaderboard = getLeaderboardForPeriod(leaderboardPeriod);
 
   if (loading) {
     return e(
@@ -953,6 +1039,43 @@ const ImmaculateGridTracker = () => {
                     "Leaderboard"
                   ),
                   e(
+                    "div",
+                    { className: "flex flex-wrap gap-2 mb-2" },
+                    e(
+                      "button",
+                      {
+                        onClick: () => setLeaderboardPeriod("weekly"),
+                        className:
+                          leaderboardPeriod === "weekly"
+                            ? "bg-orange-500 text-white px-4 py-2 rounded-lg font-medium"
+                            : "bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300",
+                      },
+                      "Weekly"
+                    ),
+                    e(
+                      "button",
+                      {
+                        onClick: () => setLeaderboardPeriod("monthly"),
+                        className:
+                          leaderboardPeriod === "monthly"
+                            ? "bg-orange-500 text-white px-4 py-2 rounded-lg font-medium"
+                            : "bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300",
+                      },
+                      "Monthly"
+                    ),
+                    e(
+                      "button",
+                      {
+                        onClick: () => setLeaderboardPeriod("all-time"),
+                        className:
+                          leaderboardPeriod === "all-time"
+                            ? "bg-orange-500 text-white px-4 py-2 rounded-lg font-medium"
+                            : "bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300",
+                      },
+                      "All Time"
+                    )
+                  ),
+                  e(
                     "p",
                     {
                       className: "text-sm text-gray-600 italic",
@@ -970,7 +1093,11 @@ const ImmaculateGridTracker = () => {
                   e(
                     "p",
                     { className: "text-lg" },
-                    "No scores yet. Add your first score to get started!"
+                    leaderboardPeriod === "weekly"
+                      ? "No scores this week yet."
+                      : leaderboardPeriod === "monthly"
+                      ? "No scores this month yet."
+                      : "No scores yet. Add your first score to get started!"
                   )
                 )
               : e(
