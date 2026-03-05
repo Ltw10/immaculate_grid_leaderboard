@@ -1,1593 +1,463 @@
-// Main application component
-const { useState, useEffect } = React;
-const e = React.createElement;
-const { Trophy, Plus, ArrowLeft, Calendar, TrendingDown, Hash, RefreshCw } =
-  window.Icons;
+/**
+ * Main app: state, data loading, handlers, and composition of components.
+ * Uses window.DateUtils, window.LeaderboardUtils, and window components.
+ */
+(function () {
+  const { useState, useEffect } = React;
+  const e = React.createElement;
+  const DateUtils = window.DateUtils;
+  const LeaderboardUtils = window.LeaderboardUtils;
+  const { getTodayEST, getTodayLocal, getWeekRangeForOffset, getMonthRangeForOffset, formatDateRange, getGridNumberForDate, normalizeDateString } = DateUtils;
+  const { isWeekday, getWeekdaysBetween, calculateStats, calculateLeaderboardStats, calculateLeaderboardStatsForPeriod } = LeaderboardUtils;
 
-const ImmaculateGridTracker = () => {
-  const [view, setView] = useState("leaderboard");
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [players, setPlayers] = useState({});
-  const [showAddScore, setShowAddScore] = useState(false);
-  const [isTodaysScore, setIsTodaysScore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingScore, setEditingScore] = useState(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [newScore, setNewScore] = useState({
-    name: "",
-    date: (() => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, "0");
-      const day = String(now.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    })(),
-    score: "",
-    imageFile: null,
-  });
-  const [playerImages, setPlayerImages] = useState({}); // Store image URLs by player and date
-  const [viewingImage, setViewingImage] = useState(null); // Image URL to view in modal
-  const [leaderboardPeriod, setLeaderboardPeriod] = useState("weekly"); // "weekly" | "monthly" | "all-time"
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  // Helper to get today's date in EST/EDT timezone (YYYY-MM-DD format)
-  // Uses America/New_York timezone which automatically handles EST/EDT
-  const getTodayEST = () => {
-    const now = new Date();
-    // Format date in America/New_York timezone
-    // EST is UTC-5, EDT is UTC-4, but we'll use a more reliable method
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    
-    const parts = formatter.formatToParts(now);
-    const year = parts.find(p => p.type === 'year').value;
-    const month = parts.find(p => p.type === 'month').value;
-    const day = parts.find(p => p.type === 'day').value;
-    
-    return `${year}-${month}-${day}`;
-  };
-  
-  // Helper to get yesterday's date in EST/EDT timezone
-  const getYesterdayEST = () => {
-    const now = new Date();
-    // Subtract one day
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    // Format date in America/New_York timezone
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    
-    const parts = formatter.formatToParts(yesterday);
-    const year = parts.find(p => p.type === 'year').value;
-    const month = parts.find(p => p.type === 'month').value;
-    const day = parts.find(p => p.type === 'day').value;
-    
-    return `${year}-${month}-${day}`;
-  };
-
-  // Helper to get start of current week (Monday) in EST
-  const getWeekStartEST = () => {
-    const yesterday = getYesterdayEST();
-    const [y, m, d] = yesterday.split("-").map(Number);
-    // Find Monday: iterate back from yesterday (up to 7 days)
-    for (let offset = 0; offset < 7; offset++) {
-      const checkDate = new Date(Date.UTC(y, m - 1, d - offset, 12, 0, 0));
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        weekday: "short",
-      });
-      const weekday = formatter.format(checkDate);
-      if (weekday === "Mon") {
-        const ys = String(checkDate.getUTCFullYear());
-        const ms = String(checkDate.getUTCMonth() + 1).padStart(2, "0");
-        const ds = String(checkDate.getUTCDate()).padStart(2, "0");
-        return `${ys}-${ms}-${ds}`;
-      }
+  function getLeaderboardPeriodLabel(leaderboardPeriod, leaderboardWeekOffset, leaderboardMonthOffset) {
+    if (leaderboardPeriod === "all-time") return null;
+    if (leaderboardPeriod === "weekly") {
+      if (leaderboardWeekOffset === 0) return "This week";
+      if (leaderboardWeekOffset === -1) return "Last week";
+      return Math.abs(leaderboardWeekOffset) + " weeks ago";
     }
-    return yesterday;
-  };
-
-  // Helper to get start of current month in EST
-  const getMonthStartEST = () => {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const now = new Date();
-    const parts = formatter.formatToParts(now);
-    const year = parts.find((p) => p.type === "year").value;
-    const month = parts.find((p) => p.type === "month").value;
-    return `${year}-${month}-01`;
-  };
-
-  // Helper to get today's date in local timezone (YYYY-MM-DD format) - kept for compatibility
-  const getTodayLocal = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  // Helper to normalize date strings to YYYY-MM-DD format (preserving local date, not UTC)
-  const normalizeDateString = (dateStr) => {
-    if (!dateStr) return null;
-    // If it's already in YYYY-MM-DD format, return as is
-    if (typeof dateStr === "string" && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      return dateStr;
+    if (leaderboardPeriod === "monthly") {
+      const { startDate } = getMonthRangeForOffset(leaderboardMonthOffset);
+      const [, m] = startDate.split("-");
+      const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      if (leaderboardMonthOffset === 0) return "This month";
+      const [y] = startDate.split("-");
+      return monthNames[Number(m) - 1] + " " + y;
     }
-    // If it's a Date object, convert to local date string
-    if (dateStr instanceof Date) {
-      const year = dateStr.getFullYear();
-      const month = String(dateStr.getMonth() + 1).padStart(2, "0");
-      const day = String(dateStr.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
+    return null;
+  }
+
+  function getLeaderboardPeriodDateRange(leaderboardPeriod, leaderboardWeekOffset, leaderboardMonthOffset) {
+    if (leaderboardPeriod === "all-time") return null;
+    if (leaderboardPeriod === "weekly") {
+      const { startDate, endDate } = getWeekRangeForOffset(leaderboardWeekOffset);
+      return formatDateRange(startDate, endDate);
     }
-    // Try to parse as date and format in local timezone
-    try {
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        // Use local date methods, not UTC
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, "0");
-        const day = String(date.getDate()).padStart(2, "0");
+    if (leaderboardPeriod === "monthly") {
+      const { startDate, endDate } = getMonthRangeForOffset(leaderboardMonthOffset);
+      return formatDateRange(startDate, endDate);
+    }
+    return null;
+  }
+
+  function ImmaculateGridTracker() {
+    const [view, setView] = useState("leaderboard");
+    const [selectedPlayer, setSelectedPlayer] = useState(null);
+    const [players, setPlayers] = useState({});
+    const [showAddScore, setShowAddScore] = useState(false);
+    const [isTodaysScore, setIsTodaysScore] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editingScore, setEditingScore] = useState(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [newScore, setNewScore] = useState({
+      name: "",
+      date: (() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
+      })(),
+      score: "",
+      imageFile: null,
+    });
+    const [playerImages, setPlayerImages] = useState({});
+    const [viewingImage, setViewingImage] = useState(null);
+    const [leaderboardPeriod, setLeaderboardPeriod] = useState("weekly");
+    const [leaderboardWeekOffset, setLeaderboardWeekOffset] = useState(0);
+    const [leaderboardMonthOffset, setLeaderboardMonthOffset] = useState(0);
+
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const scores = await window.storage.get();
+        const playersObj = {};
+        const imagesObj = {};
+        scores.forEach((score) => {
+          if (!playersObj[score.name]) playersObj[score.name] = {};
+          const normalizedDate = normalizeDateString(score.date);
+          playersObj[score.name][normalizedDate] = score.score;
+          if (!imagesObj[score.name]) imagesObj[score.name] = {};
+          if (score.imageUrl) imagesObj[score.name][normalizedDate] = score.imageUrl;
+        });
+        setPlayerImages(imagesObj);
+        setPlayers(playersObj);
+      } catch (error) {
+        console.error("Error loading data:", error);
+        alert("Failed to load data. Please check your Supabase credentials in storage.js");
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      // If parsing fails, return original
-    }
-    return dateStr;
-  };
+    };
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const scores = await window.storage.get();
+    useEffect(() => {
+      loadData();
+    }, []);
 
-      // Convert array of scores to players object
-      const playersObj = {};
-      const imagesObj = {};
-      scores.forEach((score) => {
-        if (!playersObj[score.name]) {
-          playersObj[score.name] = {};
-        }
-        // Normalize the date when storing
-        const normalizedDate = normalizeDateString(score.date);
-        playersObj[score.name][normalizedDate] = score.score;
-
-        // Store image URLs
-        if (!imagesObj[score.name]) {
-          imagesObj[score.name] = {};
-        }
-        if (score.imageUrl) {
-          imagesObj[score.name][normalizedDate] = score.imageUrl;
-        }
-      });
-
-      setPlayerImages(imagesObj);
-
-      setPlayers(playersObj);
-    } catch (error) {
-      console.error("Error loading data:", error);
-      alert(
-        "Failed to load data. Please check your Supabase credentials in storage.js"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddScore = async () => {
-    if (!newScore.name || !newScore.date || !newScore.score) {
-      alert("Please fill in all fields");
-      return;
-    }
-
-    const score = parseInt(newScore.score);
-    if (isNaN(score) || score < 0 || score > 900) {
-      alert("Score must be a number between 0 and 900");
-      return;
-    }
-
-    // Check if score already exists
-    const existingScore = players[newScore.name]?.[newScore.date];
-    if (existingScore) {
-      if (
-        !confirm(
-          `${newScore.name} already has a score for ${newScore.date}. Overwrite?`
-        )
-      ) {
+    const handleAddScore = async () => {
+      if (!newScore.name || !newScore.date || !newScore.score) {
+        alert("Please fill in all fields");
         return;
       }
-    }
+      const score = parseInt(newScore.score);
+      if (isNaN(score) || score < 0 || score > 900) {
+        alert("Score must be a number between 0 and 900");
+        return;
+      }
+      const existingScore = players[newScore.name]?.[newScore.date];
+      if (existingScore && !confirm(`${newScore.name} already has a score for ${newScore.date}. Overwrite?`)) return;
 
-    setSaving(true);
-    try {
-      const result = await window.storage.update(
-        newScore.name,
-        newScore.date,
-        score
-      );
+      setSaving(true);
+      try {
+        const result = await window.storage.update(newScore.name, newScore.date, score);
+        if (result.success) {
+          const updatedPlayers = { ...players };
+          if (!updatedPlayers[newScore.name]) updatedPlayers[newScore.name] = {};
+          updatedPlayers[newScore.name][newScore.date] = score;
+          setPlayers(updatedPlayers);
 
-      if (result.success) {
-        // Update local state
-        const updatedPlayers = { ...players };
-        if (!updatedPlayers[newScore.name]) {
-          updatedPlayers[newScore.name] = {};
-        }
-        updatedPlayers[newScore.name][newScore.date] = score;
-        setPlayers(updatedPlayers);
-
-        // If there's an image file, upload it
-        if (newScore.imageFile) {
-          const today = getTodayLocal();
-          const isCurrentDay = newScore.date === today;
-
-          // Check if we can upload this image
-          const canUpload = await window.storage.manageImageStorage(
-            newScore.name,
-            newScore.date,
-            score,
-            isCurrentDay
-          );
-
-          if (canUpload.canUpload) {
-            const imageResult = await window.storage.uploadImage(
-              newScore.name,
-              newScore.date,
-              newScore.imageFile
-            );
-
-            if (!imageResult.success) {
-              // Image upload failed but score was saved
-              // Don't fail the whole operation if image upload fails
+          if (newScore.imageFile) {
+            const today = getTodayLocal();
+            const isCurrentDay = newScore.date === today;
+            const canUpload = await window.storage.manageImageStorage(newScore.name, newScore.date, score, isCurrentDay);
+            if (canUpload.canUpload) {
+              await window.storage.uploadImage(newScore.name, newScore.date, newScore.imageFile);
+            } else {
+              alert(canUpload.message || "Cannot upload image for this score.");
             }
-          } else {
-            alert(canUpload.message || "Cannot upload image for this score.");
-            // Continue anyway - score is saved
           }
+          await loadData();
+          setNewScore({ name: "", date: getTodayLocal(), score: "", imageFile: null });
+          setIsTodaysScore(false);
+          setShowAddScore(false);
+        } else {
+          alert("Failed to save score: " + result.message);
         }
-
-        // Reload data to get latest from server
-        await loadData();
-
-        setNewScore({
-          name: "",
-          date: getTodayLocal(),
-          score: "",
-          imageFile: null,
-        });
-        setIsTodaysScore(false);
-        setShowAddScore(false);
-      } else {
-        alert("Failed to save score: " + result.message);
+      } catch (error) {
+        console.error("Error saving score:", error);
+        alert("Failed to save score. Please try again.");
+      } finally {
+        setSaving(false);
       }
-    } catch (error) {
-      console.error("Error saving score:", error);
-      alert("Failed to save score. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
+    };
 
-  // Helper function to check if a date is a weekday (Monday-Friday)
-  const isWeekday = (dateString) => {
-    const date = new Date(dateString + "T00:00:00");
-    const dayOfWeek = date.getDay();
-    // 0 = Sunday, 6 = Saturday, so weekdays are 1-5
-    return dayOfWeek >= 1 && dayOfWeek <= 5;
-  };
+    const handleEditScore = (playerName, date, score, imageUrl) => {
+      setEditingScore({ name: playerName, date, score, imageUrl });
+      setShowEditModal(true);
+    };
 
-  // Calculate stats for all scores (used in player detail view)
-  const calculateStats = (playerScores) => {
-    const scores = Object.values(playerScores);
-    const total = scores.reduce((sum, score) => sum + score, 0);
-    const average = scores.length > 0 ? (total / scores.length).toFixed(2) : 0;
-    const gamesPlayed = scores.length;
-    return { average: parseFloat(average), gamesPlayed, total };
-  };
-
-  // Helper to get all weekdays between two dates (inclusive)
-  const getWeekdaysBetween = (startDate, endDate) => {
-    const weekdays = [];
-    const start = new Date(startDate + "T00:00:00");
-    const end = new Date(endDate + "T00:00:00");
-    const current = new Date(start);
-
-    while (current <= end) {
-      // Use local date methods to avoid timezone issues
-      const year = current.getFullYear();
-      const month = String(current.getMonth() + 1).padStart(2, "0");
-      const day = String(current.getDate()).padStart(2, "0");
-      const dateStr = `${year}-${month}-${day}`;
-
-      if (isWeekday(dateStr)) {
-        weekdays.push(dateStr);
+    const handleImageUpload = async (file) => {
+      if (!editingScore) return;
+      setUploadingImage(true);
+      try {
+        const today = getTodayLocal();
+        const isCurrentDay = editingScore.date === today;
+        const canUpload = await window.storage.manageImageStorage(editingScore.name, editingScore.date, editingScore.score, isCurrentDay);
+        if (!canUpload.canUpload) {
+          alert(canUpload.message || "Cannot upload image for this score.");
+          setUploadingImage(false);
+          return;
+        }
+        const result = await window.storage.uploadImage(editingScore.name, editingScore.date, file);
+        if (result.success) {
+          await loadData();
+          setEditingScore({ ...editingScore, imageUrl: result.imageUrl });
+          alert("Image uploaded successfully!");
+        } else {
+          alert("Failed to upload image: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error uploading image:", error);
+        alert("Failed to upload image. Please try again.");
+      } finally {
+        setUploadingImage(false);
       }
-      current.setDate(current.getDate() + 1);
-    }
-
-    return weekdays;
-  };
-
-  // Calculate stats for leaderboard (only weekdays, with auto-900 for missed days)
-  const calculateLeaderboardStats = (playerScores) => {
-    // Filter to only include weekday scores
-    const weekdayScores = Object.entries(playerScores)
-      .filter(([date]) => isWeekday(date))
-      .map(([, score]) => score);
-
-    if (weekdayScores.length === 0) {
-      return { average: 0, gamesPlayed: 0, total: 0, missedDays: 0 };
-    }
-
-    // Find the first score date and today
-    const allDates = Object.keys(playerScores).filter(isWeekday);
-    if (allDates.length === 0) {
-      return { average: 0, gamesPlayed: 0, total: 0, missedDays: 0 };
-    }
-
-    const firstDate = allDates.sort()[0];
-    const todayEST = getTodayEST();
-
-    // Get all weekdays from first score to yesterday (EST) - don't include today
-    // We need to get yesterday in EST
-    const yesterdayEST = (() => {
-      const now = new Date();
-      const estOffset = -5;
-      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-      const estTime = new Date(utc + (estOffset * 3600000));
-      estTime.setUTCDate(estTime.getUTCDate() - 1);
-      const year = estTime.getUTCFullYear();
-      const month = String(estTime.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(estTime.getUTCDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    })();
-    
-    const endDate = firstDate <= yesterdayEST ? yesterdayEST : firstDate;
-    const allWeekdays = getWeekdaysBetween(firstDate, endDate);
-
-    // Count missed days (weekdays without scores, excluding today)
-    const missedDays = allWeekdays.filter((date) => !playerScores[date] && date < todayEST).length;
-
-    // Add 900 for each missed weekday when calculating average
-    const totalWithMissed =
-      weekdayScores.reduce((sum, score) => sum + score, 0) + missedDays * 900;
-    const totalWeekdays = weekdayScores.length + missedDays;
-    const average =
-      totalWeekdays > 0 ? (totalWithMissed / totalWeekdays).toFixed(2) : 0;
-    const gamesPlayed = weekdayScores.length;
-
-    return {
-      average: parseFloat(average),
-      gamesPlayed,
-      total: totalWithMissed,
-      missedDays,
     };
-  };
 
-  // Calculate leaderboard stats for a date range (weekdays only, with auto-900 for missed days)
-  // Includes today's scores in the period; 900 for missed days only applies to days that are over (before today EST)
-  const calculateLeaderboardStatsForPeriod = (playerScores, startDate, endDate) => {
-    const todayEST = getTodayEST();
-    const yesterdayEST = getYesterdayEST();
-    // Include scores through endDate (so today's scores count when endDate is today)
-    const endForScores = endDate > todayEST ? todayEST : endDate;
-    if (startDate > endForScores) {
-      return { average: 0, gamesPlayed: 0, total: 0, missedDays: 0 };
-    }
-    const weekdayScores = Object.entries(playerScores)
-      .filter(([date]) => isWeekday(date) && date >= startDate && date <= endForScores)
-      .map(([, score]) => score);
-    // Missed days only through yesterday (never add 900 for today until the day is over)
-    const endForMissed = endDate > yesterdayEST ? yesterdayEST : endDate;
-    const allWeekdaysForMissed =
-      startDate <= endForMissed ? getWeekdaysBetween(startDate, endForMissed) : [];
-    const missedDays = allWeekdaysForMissed.filter((date) => !playerScores[date]).length;
-    const totalWithMissed = weekdayScores.reduce((s, n) => s + n, 0) + missedDays * 900;
-    const totalDays = weekdayScores.length + missedDays;
-    const average = totalDays > 0 ? (totalWithMissed / totalDays).toFixed(2) : 0;
-    return {
-      average: parseFloat(average),
-      gamesPlayed: weekdayScores.length,
-      total: totalWithMissed,
-      missedDays,
+    const handleDeleteImage = async () => {
+      if (!editingScore || !confirm("Delete this grid image?")) return;
+      setUploadingImage(true);
+      try {
+        const result = await window.storage.deleteImage(editingScore.name, editingScore.date);
+        if (result.success) {
+          await loadData();
+          setEditingScore({ ...editingScore, imageUrl: null });
+          alert("Image deleted successfully!");
+        } else {
+          alert("Failed to delete image: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error deleting image:", error);
+        alert("Failed to delete image. Please try again.");
+      } finally {
+        setUploadingImage(false);
+      }
     };
-  };
 
-  const getLeaderboard = () => {
-    return Object.entries(players)
-      .map(([name, scores]) => ({
-        name,
-        ...calculateLeaderboardStats(scores),
-      }))
-      .filter((player) => player.gamesPlayed > 0) // Only show players with weekday scores
-      .sort((a, b) => a.average - b.average);
-  };
+    const handleUpdateScore = async () => {
+      if (!editingScore) return;
+      const score = parseInt(editingScore.score);
+      if (isNaN(score) || score < 0 || score > 900) {
+        alert("Score must be a number between 0 and 900");
+        return;
+      }
+      setSaving(true);
+      try {
+        const result = await window.storage.update(editingScore.name, editingScore.date, score);
+        if (result.success) {
+          await loadData();
+          setEditingScore({ ...editingScore, score: score });
+          alert("Score updated successfully!");
+        } else {
+          alert("Failed to update score: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error updating score:", error);
+        alert("Failed to update score. Please try again.");
+      } finally {
+        setSaving(false);
+      }
+    };
 
-  const getLeaderboardForPeriod = (period) => {
-    if (period === "all-time") {
-      return getLeaderboard();
-    }
-    const startDate = period === "weekly" ? getWeekStartEST() : getMonthStartEST();
-    // Use today as end date so today's submitted scores count toward weekly/monthly leaderboards
-    const endDate = getTodayEST();
-    return Object.entries(players)
-      .map(([name, scores]) => ({
-        name,
-        ...calculateLeaderboardStatsForPeriod(scores, startDate, endDate),
-      }))
-      .filter(
-        (player) =>
-          player.gamesPlayed > 0 // Only show players with at least one submitted score in this period
-      )
-      .sort((a, b) => a.average - b.average);
-  };
+    const deleteScore = async (playerName, date) => {
+      if (!confirm(`Delete score for ${playerName} on ${date}?`)) return;
+      setSaving(true);
+      try {
+        const result = await window.storage.delete(playerName, date);
+        if (result.success) {
+          const updatedPlayers = { ...players };
+          delete updatedPlayers[playerName][date];
+          if (Object.keys(updatedPlayers[playerName]).length === 0) {
+            delete updatedPlayers[playerName];
+            setView("leaderboard");
+            setSelectedPlayer(null);
+          }
+          setPlayers(updatedPlayers);
+        } else {
+          alert("Failed to delete score: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error deleting score:", error);
+        alert("Failed to delete score. Please try again.");
+      } finally {
+        setSaving(false);
+      }
+    };
 
-  const getPlayerHistory = (name) => {
-    if (!players[name]) return [];
-    
-    const actualScores = Object.entries(players[name])
-      .map(([date, score]) => ({
+    const getLeaderboard = () => {
+      return Object.entries(players)
+        .map(([name, scores]) => ({ name, ...calculateLeaderboardStats(scores) }))
+        .filter((player) => player.gamesPlayed > 0)
+        .sort((a, b) => a.average - b.average);
+    };
+
+    const getLeaderboardForPeriod = (period) => {
+      if (period === "all-time") return getLeaderboard();
+      const { startDate, endDate } =
+        period === "weekly"
+          ? getWeekRangeForOffset(leaderboardWeekOffset)
+          : getMonthRangeForOffset(leaderboardMonthOffset);
+      return Object.entries(players)
+        .map(([name, scores]) => ({
+          name,
+          ...calculateLeaderboardStatsForPeriod(scores, startDate, endDate),
+        }))
+        .filter((player) => player.gamesPlayed > 0)
+        .sort((a, b) => a.average - b.average);
+    };
+
+    const getPlayerHistory = (name) => {
+      if (!players[name]) return [];
+      const actualScores = Object.entries(players[name]).map(([date, score]) => ({
         date,
         score,
         imageUrl: playerImages[name]?.[date] || null,
         isAutoScored: false,
       }));
-    
-    // Find missed weekdays and add them with 900 scores
-    const allDates = Object.keys(players[name]).filter(isWeekday);
-    if (allDates.length > 0) {
-      const firstDate = allDates.sort()[0];
-      const todayEST = getTodayEST();
-      
-    // Get yesterday in EST (don't include today)
-    const yesterdayEST = getYesterdayEST();
-      
-      const endDate = firstDate <= yesterdayEST ? yesterdayEST : firstDate;
-      const allWeekdays = getWeekdaysBetween(firstDate, endDate);
-      
-      // Add missed weekdays as auto-scored 900s (only for past days, not today)
-      const missedWeekdays = allWeekdays
-        .filter(date => !players[name][date] && date < todayEST)
-        .map(date => ({
-          date,
-          score: 900,
-          imageUrl: null,
-          isAutoScored: true,
-        }));
-      
-      // Combine actual scores and auto-scored missed days
-      const allScores = [...actualScores, ...missedWeekdays];
-      return allScores.sort((a, b) => new Date(b.date) - new Date(a.date));
-    }
-    
-    return actualScores.sort((a, b) => new Date(b.date) - new Date(a.date));
-  };
-
-  const handleEditScore = (playerName, date, score, imageUrl) => {
-    setEditingScore({
-      name: playerName,
-      date: date,
-      score: score,
-      imageUrl: imageUrl,
-    });
-    setShowEditModal(true);
-  };
-
-  const handleImageUpload = async (file) => {
-    if (!editingScore) return;
-
-    setUploadingImage(true);
-    try {
-      const today = getTodayLocal();
-      const isCurrentDay = editingScore.date === today;
-
-      // Check if we can upload this image
-      const canUpload = await window.storage.manageImageStorage(
-        editingScore.name,
-        editingScore.date,
-        editingScore.score,
-        isCurrentDay
-      );
-
-      if (!canUpload.canUpload) {
-        alert(canUpload.message || "Cannot upload image for this score.");
-        setUploadingImage(false);
-        return;
+      const allDates = Object.keys(players[name]).filter(isWeekday);
+      if (allDates.length > 0) {
+        const firstDate = allDates.sort()[0];
+        const yesterdayEST = DateUtils.getYesterdayEST();
+        const endDate = firstDate <= yesterdayEST ? yesterdayEST : firstDate;
+        const allWeekdays = getWeekdaysBetween(firstDate, endDate);
+        const todayEST = getTodayEST();
+        const missedWeekdays = allWeekdays
+          .filter((date) => !players[name][date] && date < todayEST)
+          .map((date) => ({ date, score: 900, imageUrl: null, isAutoScored: true }));
+        const allScores = [...actualScores, ...missedWeekdays];
+        return allScores.sort((a, b) => new Date(b.date) - new Date(a.date));
       }
+      return actualScores.sort((a, b) => new Date(b.date) - new Date(a.date));
+    };
 
-      // Upload the image
-      const result = await window.storage.uploadImage(
-        editingScore.name,
-        editingScore.date,
-        file
-      );
-
-      if (result.success) {
-        // Reload data to get latest from server
-        await loadData();
-        // Update editing score
-        setEditingScore({ ...editingScore, imageUrl: result.imageUrl });
-        alert("Image uploaded successfully!");
-      } else {
-        alert("Failed to upload image: " + result.message);
-      }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Failed to upload image. Please try again.");
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const handleDeleteImage = async () => {
-    if (!editingScore) return;
-
-    if (!confirm("Delete this grid image?")) return;
-
-    setUploadingImage(true);
-    try {
-      const result = await window.storage.deleteImage(
-        editingScore.name,
-        editingScore.date
-      );
-
-      if (result.success) {
-        // Reload data to get latest from server
-        await loadData();
-        // Update editing score
-        setEditingScore({ ...editingScore, imageUrl: null });
-        alert("Image deleted successfully!");
-      } else {
-        alert("Failed to delete image: " + result.message);
-      }
-    } catch (error) {
-      console.error("Error deleting image:", error);
-      alert("Failed to delete image. Please try again.");
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const handleUpdateScore = async () => {
-    if (!editingScore) return;
-
-    const score = parseInt(editingScore.score);
-    if (isNaN(score) || score < 0 || score > 900) {
-      alert("Score must be a number between 0 and 900");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const result = await window.storage.update(
-        editingScore.name,
-        editingScore.date,
-        score
-      );
-
-      if (result.success) {
-        // Reload data to get latest from server
-        await loadData();
-        // Update editing score
-        setEditingScore({ ...editingScore, score: score });
-        alert("Score updated successfully!");
-      } else {
-        alert("Failed to update score: " + result.message);
-      }
-    } catch (error) {
-      console.error("Error updating score:", error);
-      alert("Failed to update score. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const getTodaysScores = () => {
-    const today = getTodayEST(); // Use EST for consistency
-    const todaysScores = [];
-
-    Object.entries(players).forEach(([name, scores]) => {
-      Object.entries(scores).forEach(([date, score]) => {
-        // Dates are already normalized when loaded, so direct comparison should work
-        if (date === today) {
-          todaysScores.push({
-            name,
-            score: score,
-            date: date,
-            imageUrl: playerImages[name]?.[date] || null,
-          });
-        }
+    const getTodaysScores = () => {
+      const today = getTodayEST();
+      const todaysScores = [];
+      Object.entries(players).forEach(([name, scores]) => {
+        Object.entries(scores).forEach(([date, score]) => {
+          if (date === today) {
+            todaysScores.push({
+              name,
+              score,
+              date,
+              imageUrl: playerImages[name]?.[date] || null,
+            });
+          }
+        });
       });
-    });
+      return todaysScores.sort((a, b) => a.score - b.score);
+    };
 
-    return todaysScores.sort((a, b) => a.score - b.score);
-  };
+    const setLeaderboardPeriodAndReset = (period) => {
+      setLeaderboardPeriod(period);
+      setLeaderboardWeekOffset(0);
+      setLeaderboardMonthOffset(0);
+    };
 
-  const deleteScore = async (playerName, date) => {
-    if (!confirm(`Delete score for ${playerName} on ${date}?`)) return;
+    const leaderboard = getLeaderboardForPeriod(leaderboardPeriod);
 
-    setSaving(true);
-    try {
-      const result = await window.storage.delete(playerName, date);
-
-      if (result.success) {
-        const updatedPlayers = { ...players };
-        delete updatedPlayers[playerName][date];
-
-        if (Object.keys(updatedPlayers[playerName]).length === 0) {
-          delete updatedPlayers[playerName];
-          setView("leaderboard");
-          setSelectedPlayer(null);
-        }
-
-        setPlayers(updatedPlayers);
-      } else {
-        alert("Failed to delete score: " + result.message);
-      }
-    } catch (error) {
-      console.error("Error deleting score:", error);
-      alert("Failed to delete score. Please try again.");
-    } finally {
-      setSaving(false);
+    if (loading) {
+      return e(
+        "div",
+        { className: "min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 flex items-center justify-center" },
+        e(
+          "div",
+          { className: "text-center" },
+          e("div", { className: "text-2xl font-bold text-gray-800 mb-2" }, "Loading..."),
+          e("div", { className: "text-gray-600" }, "Fetching scores from Supabase")
+        )
+      );
     }
-  };
 
-  const leaderboard = getLeaderboardForPeriod(leaderboardPeriod);
-
-  if (loading) {
     return e(
       "div",
-      {
-        className:
-          "min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 flex items-center justify-center",
-      },
+      { className: "min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 p-4" },
       e(
         "div",
-        { className: "text-center" },
+        { className: "max-w-4xl mx-auto" },
         e(
           "div",
-          { className: "text-2xl font-bold text-gray-800 mb-2" },
-          "Loading..."
+          { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+          e(window.Header, {
+            view,
+            loading,
+            onRefresh: loadData,
+            onAddTodaysScore: () => {
+              setNewScore({ name: "", date: getTodayLocal(), score: "", imageFile: null });
+              setIsTodaysScore(true);
+              setShowAddScore(true);
+            },
+            onAddScore: () => {
+              setNewScore({ name: "", date: getTodayLocal(), score: "", imageFile: null });
+              setIsTodaysScore(false);
+              setShowAddScore(true);
+            },
+            onBack: () => {
+              setView("leaderboard");
+              setSelectedPlayer(null);
+            },
+          }),
+
+          saving &&
+            e(
+              "div",
+              {
+                className: "bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg mb-4",
+              },
+              "Saving to Supabase..."
+            ),
+
+          showAddScore &&
+            e(window.AddScoreForm, {
+              newScore,
+              setNewScore,
+              players,
+              isTodaysScore,
+              saving,
+              onSave: handleAddScore,
+              onCancel: () => {
+                setShowAddScore(false);
+                setIsTodaysScore(false);
+                setNewScore({ name: "", date: getTodayLocal(), score: "", imageFile: null });
+              },
+            }),
+
+          view === "leaderboard" &&
+            e(window.TodaysScoresSection, {
+              todaysScores: getTodaysScores(),
+              todayGridNumber: getGridNumberForDate(getTodayEST()),
+              todayFormatted: new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }),
+              periodLabel: getLeaderboardPeriodLabel(leaderboardPeriod, leaderboardWeekOffset, leaderboardMonthOffset),
+              periodDateRange: getLeaderboardPeriodDateRange(leaderboardPeriod, leaderboardWeekOffset, leaderboardMonthOffset),
+              leaderboardPeriod,
+              onSetLeaderboardPeriod: setLeaderboardPeriodAndReset,
+              leaderboardWeekOffset,
+              leaderboardMonthOffset,
+              onSetLeaderboardWeekOffset: setLeaderboardWeekOffset,
+              onSetLeaderboardMonthOffset: setLeaderboardMonthOffset,
+              onPlayerClick: (name) => {
+                setSelectedPlayer(name);
+                setView("player");
+              },
+              leaderboard,
+              onViewImage: setViewingImage,
+            }),
+
+          view === "player" &&
+            selectedPlayer &&
+            players[selectedPlayer] &&
+            e(window.PlayerView, {
+              selectedPlayer,
+              playerStats: calculateStats(players[selectedPlayer]),
+              playerHistory: getPlayerHistory(selectedPlayer),
+              getGridNumberForDate,
+              onEditScore: handleEditScore,
+              onViewImage: setViewingImage,
+              onDeleteScore: deleteScore,
+              saving,
+            })
         ),
+
+        showEditModal &&
+          editingScore &&
+          e(window.EditScoreModal, {
+            editingScore,
+            setEditingScore,
+            onClose: () => setShowEditModal(false),
+            onUpdateScore: handleUpdateScore,
+            saving,
+            onImageUpload: handleImageUpload,
+            onDeleteImage: handleDeleteImage,
+            uploadingImage,
+            onViewImage: setViewingImage,
+          }),
+
+        viewingImage &&
+          e(window.ImageViewerModal, {
+            imageUrl: viewingImage,
+            onClose: () => setViewingImage(null),
+          }),
+
         e(
           "div",
-          { className: "text-gray-600" },
-          "Fetching scores from Supabase"
+          { className: "text-center text-sm text-gray-600" },
+          e(
+            "p",
+            null,
+            "Track your Immaculate Grid scores with friends! Data synced via Supabase."
+          )
         )
       )
     );
   }
 
-  return e(
-    "div",
-    {
-      className: "min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 p-4",
-    },
-    e(
-      "div",
-      { className: "max-w-4xl mx-auto" },
-      e(
-        "div",
-        { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
-        e(
-          "div",
-          { className: "mb-6" },
-          e(
-            "div",
-            { className: "flex items-center gap-3 mb-4 sm:mb-0" },
-            e(Trophy, { className: "w-6 h-6 sm:w-8 sm:h-8 text-orange-500" }),
-            e(
-              "h1",
-              {
-                className:
-                  "text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800",
-              },
-              "Immaculate Grid Tracker"
-            )
-          ),
-          e(
-            "div",
-            { className: "flex flex-wrap gap-2" },
-            view === "leaderboard" &&
-              e(
-                "button",
-                {
-                  onClick: loadData,
-                  className:
-                    "bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
-                  disabled: loading,
-                },
-                e(RefreshCw, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
-                e("span", { className: "hidden sm:inline" }, "Refresh")
-              ),
-            view === "leaderboard" &&
-              e(
-                "button",
-                {
-                  onClick: () => {
-                    setNewScore({
-                      name: "",
-                      date: getTodayLocal(),
-                      score: "",
-                      imageFile: null,
-                    });
-                    setIsTodaysScore(true);
-                    setShowAddScore(true);
-                  },
-                  className:
-                    "bg-green-500 hover:bg-green-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
-                },
-                e(Calendar, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
-                e(
-                  "span",
-                  { className: "hidden sm:inline" },
-                  "Add Today's Score"
-                ),
-                e("span", { className: "sm:hidden" }, "Today")
-              ),
-            view === "leaderboard" &&
-              e(
-                "button",
-                {
-                  onClick: () => {
-                    setNewScore({
-                      name: "",
-                      date: getTodayLocal(),
-                      score: "",
-                      imageFile: null,
-                    });
-                    setIsTodaysScore(false);
-                    setShowAddScore(true);
-                  },
-                  className:
-                    "bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
-                },
-                e(Plus, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
-                e("span", { className: "hidden sm:inline" }, "Add Score"),
-                e("span", { className: "sm:hidden" }, "Add")
-              ),
-            view === "player" &&
-              e(
-                "button",
-                {
-                  onClick: () => {
-                    setView("leaderboard");
-                    setSelectedPlayer(null);
-                  },
-                  className:
-                    "bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 sm:px-4 rounded-lg flex items-center gap-1 sm:gap-2 transition-colors text-sm sm:text-base",
-                },
-                e(ArrowLeft, { className: "w-4 h-4 sm:w-5 sm:h-5" }),
-                e("span", { className: "hidden sm:inline" }, "Back")
-              )
-          )
-        ),
-
-        saving &&
-          e(
-            "div",
-            {
-              className:
-                "bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg mb-4",
-            },
-            "Saving to Supabase..."
-          ),
-
-        showAddScore &&
-          e(
-            "div",
-            {
-              className:
-                "bg-blue-50 p-6 rounded-lg mb-6 border-2 border-blue-200",
-            },
-            e(
-              "h2",
-              { className: "text-xl font-bold mb-4 text-gray-800" },
-              "Add New Score"
-            ),
-            e(
-              "div",
-              { className: "grid gap-4" },
-              e(
-                "div",
-                null,
-                e(
-                  "label",
-                  { className: "block text-sm font-medium text-gray-700 mb-1" },
-                  "Player Name"
-                ),
-                e("input", {
-                  type: "text",
-                  value: newScore.name,
-                  onChange: (ev) =>
-                    setNewScore({ ...newScore, name: ev.target.value }),
-                  placeholder: "Enter name",
-                  className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent",
-                  list: "player-names",
-                }),
-                e(
-                  "datalist",
-                  { id: "player-names" },
-                  Object.keys(players).map((name) =>
-                    e("option", { key: name, value: name })
-                  )
-                )
-              ),
-              e(
-                "div",
-                null,
-                e(
-                  "label",
-                  { className: "block text-sm font-medium text-gray-700 mb-1" },
-                  "Date"
-                ),
-                e("input", {
-                  type: "date",
-                  value: newScore.date,
-                  onChange: (ev) =>
-                    setNewScore({ ...newScore, date: ev.target.value }),
-                  disabled: isTodaysScore,
-                  className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500",
-                })
-              ),
-              e(
-                "div",
-                null,
-                e(
-                  "label",
-                  { className: "block text-sm font-medium text-gray-700 mb-1" },
-                  "Score (0-900)"
-                ),
-                e("input", {
-                  type: "number",
-                  min: "0",
-                  max: "900",
-                  value: newScore.score,
-                  onChange: (ev) =>
-                    setNewScore({ ...newScore, score: ev.target.value }),
-                  placeholder: "Enter score",
-                  className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent",
-                })
-              ),
-              e(
-                "div",
-                null,
-                e(
-                  "label",
-                  { className: "block text-sm font-medium text-gray-700 mb-1" },
-                  "Grid Image (Optional)"
-                ),
-                e("input", {
-                  type: "file",
-                  accept: "image/*",
-                  onChange: (ev) => {
-                    const file = ev.target.files[0];
-                    setNewScore({ ...newScore, imageFile: file });
-                  },
-                  disabled: saving,
-                  className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent disabled:opacity-50",
-                }),
-                newScore.imageFile &&
-                  e(
-                    "p",
-                    { className: "text-sm text-gray-600 mt-1" },
-                    `Selected: ${newScore.imageFile.name}`
-                  )
-              ),
-              e(
-                "div",
-                { className: "flex gap-2" },
-                e(
-                  "button",
-                  {
-                    onClick: handleAddScore,
-                    disabled: saving,
-                    className:
-                      "flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50",
-                  },
-                  saving ? "Saving..." : "Save Score"
-                ),
-                e(
-                  "button",
-                  {
-                    onClick: () => {
-                      setShowAddScore(false);
-                      setIsTodaysScore(false);
-                      setNewScore({
-                        name: "",
-                        date: getTodayLocal(),
-                        score: "",
-                        imageFile: null,
-                      });
-                    },
-                    disabled: saving,
-                    className:
-                      "flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50",
-                  },
-                  "Cancel"
-                )
-              )
-            )
-          ),
-
-        view === "leaderboard" &&
-          e(
-            "div",
-            null,
-            (() => {
-              const todaysScores = getTodaysScores();
-              return e(
-                "div",
-                null,
-                e(
-                  "div",
-                  {
-                    className:
-                      "bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg mb-6 border-2 border-green-200",
-                  },
-                  e(
-                    "div",
-                    { className: "flex items-center justify-between mb-3" },
-                    e(
-                      "h3",
-                      {
-                        className:
-                          "text-lg font-bold text-gray-800 flex items-center gap-2",
-                      },
-                      e(Calendar, { className: "w-5 h-5 text-green-600" }),
-                      "Today's Scores"
-                    ),
-                    e(
-                      "span",
-                      { className: "text-sm text-gray-600" },
-                      new Date().toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })
-                    )
-                  ),
-                  todaysScores.length > 0
-                    ? e(
-                        "div",
-                        {
-                          className:
-                            "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
-                        },
-                        todaysScores.map(({ name, score, imageUrl }) =>
-                          e(
-                            "div",
-                            {
-                              key: name,
-                              className:
-                                "bg-white p-3 rounded-lg border border-green-200 flex items-center justify-between",
-                            },
-                            e(
-                              "div",
-                              { className: "flex items-center gap-2" },
-                              e(
-                                "span",
-                                { className: "font-medium text-gray-800" },
-                                name
-                              ),
-                              imageUrl &&
-                                e(
-                                  "span",
-                                  {
-                                    className:
-                                      "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded cursor-pointer hover:bg-blue-200",
-                                    title: "Click to view image",
-                                    onClick: (e) => {
-                                      e.stopPropagation();
-                                      setViewingImage(imageUrl);
-                                    },
-                                  },
-                                  "📷"
-                                )
-                            ),
-                            e(
-                              "span",
-                              {
-                                className: `text-lg font-bold ${
-                                  score <= 100
-                                    ? "text-green-600"
-                                    : score <= 300
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
-                                }`,
-                              },
-                              score
-                            )
-                          )
-                        )
-                      )
-                    : e(
-                        "div",
-                        { className: "text-center py-4 text-gray-500" },
-                        "No scores for today yet. Be the first to add one!"
-                      )
-                ),
-                e(
-                  "div",
-                  { className: "mb-4" },
-                  e(
-                    "h2",
-                    { className: "text-2xl font-bold text-gray-800 mb-2" },
-                    "Leaderboard"
-                  ),
-                  e(
-                    "div",
-                    { className: "flex flex-wrap gap-2 mb-2" },
-                    e(
-                      "button",
-                      {
-                        onClick: () => setLeaderboardPeriod("weekly"),
-                        className:
-                          leaderboardPeriod === "weekly"
-                            ? "bg-orange-500 text-white px-4 py-2 rounded-lg font-medium"
-                            : "bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300",
-                      },
-                      "Weekly"
-                    ),
-                    e(
-                      "button",
-                      {
-                        onClick: () => setLeaderboardPeriod("monthly"),
-                        className:
-                          leaderboardPeriod === "monthly"
-                            ? "bg-orange-500 text-white px-4 py-2 rounded-lg font-medium"
-                            : "bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300",
-                      },
-                      "Monthly"
-                    ),
-                    e(
-                      "button",
-                      {
-                        onClick: () => setLeaderboardPeriod("all-time"),
-                        className:
-                          leaderboardPeriod === "all-time"
-                            ? "bg-orange-500 text-white px-4 py-2 rounded-lg font-medium"
-                            : "bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300",
-                      },
-                      "All Time"
-                    )
-                  ),
-                  e(
-                    "p",
-                    {
-                      className: "text-sm text-gray-600 italic",
-                    },
-                    "Note: Only weekday grids (Monday-Friday) count toward averages and games played."
-                  )
-                )
-              );
-            })(),
-            leaderboard.length === 0
-              ? e(
-                  "div",
-                  { className: "text-center py-12 text-gray-500" },
-                  e(Trophy, { className: "w-16 h-16 mx-auto mb-4 opacity-30" }),
-                  e(
-                    "p",
-                    { className: "text-lg" },
-                    leaderboardPeriod === "weekly"
-                      ? "No scores this week yet."
-                      : leaderboardPeriod === "monthly"
-                      ? "No scores this month yet."
-                      : "No scores yet. Add your first score to get started!"
-                  )
-                )
-              : e(
-                  "div",
-                  { className: "space-y-3" },
-                  leaderboard.map((player, index) =>
-                    e(
-                      "div",
-                      {
-                        key: player.name,
-                        onClick: () => {
-                          setSelectedPlayer(player.name);
-                          setView("player");
-                        },
-                        className:
-                          "bg-gradient-to-r from-white to-gray-50 p-4 rounded-lg border-2 border-gray-200 hover:border-orange-300 cursor-pointer transition-all hover:shadow-md",
-                      },
-                      e(
-                        "div",
-                        {
-                          className:
-                            "flex items-center justify-between gap-2 sm:gap-4",
-                        },
-                        e(
-                          "div",
-                          {
-                            className:
-                              "flex items-center gap-2 sm:gap-4 min-w-0 flex-1",
-                          },
-                          e(
-                            "div",
-                            {
-                              className: `text-lg sm:text-2xl font-bold flex-shrink-0 ${
-                                index === 0
-                                  ? "text-yellow-500"
-                                  : index === 1
-                                  ? "text-gray-400"
-                                  : index === 2
-                                  ? "text-orange-600"
-                                  : "text-gray-400"
-                              }`,
-                            },
-                            `#${index + 1}`
-                          ),
-                          e(
-                            "div",
-                            { className: "min-w-0 flex-1" },
-                            e(
-                              "h3",
-                              {
-                                className:
-                                  "text-base sm:text-lg font-bold text-gray-800 truncate",
-                              },
-                              player.name
-                            ),
-                            e(
-                              "div",
-                              {
-                                className:
-                                  "flex flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600",
-                              },
-                              e(
-                                "span",
-                                { className: "flex items-center gap-1" },
-                                e(TrendingDown, {
-                                  className: "w-3 h-3 sm:w-4 sm:h-4",
-                                }),
-                                `Avg: ${player.average}`
-                              ),
-                              e(
-                                "span",
-                                { className: "flex items-center gap-1" },
-                                e(Hash, { className: "w-3 h-3 sm:w-4 sm:h-4" }),
-                                e(
-                                  "span",
-                                  { className: "hidden sm:inline" },
-                                  "Weekday "
-                                ),
-                                `Games: ${player.gamesPlayed}`
-                              ),
-                              player.missedDays > 0 &&
-                                e(
-                                  "span",
-                                  {
-                                    className:
-                                      "flex items-center gap-1 text-red-600 font-medium",
-                                    title:
-                                      "Missed weekday grids (auto-scored as 900)",
-                                  },
-                                  "⚠️",
-                                  e(
-                                    "span",
-                                    { className: "hidden sm:inline" },
-                                    "Missed: "
-                                  ),
-                                  player.missedDays
-                                )
-                            )
-                          )
-                        ),
-                        e(
-                          "div",
-                          { className: "text-right flex-shrink-0" },
-                          e(
-                            "div",
-                            {
-                              className:
-                                "text-xl sm:text-2xl lg:text-3xl font-bold text-orange-500",
-                            },
-                            player.average
-                          ),
-                          e(
-                            "div",
-                            {
-                              className:
-                                "text-xs text-gray-500 hidden sm:block",
-                            },
-                            "average"
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
-          ),
-
-        view === "player" &&
-          selectedPlayer &&
-          e(
-            "div",
-            null,
-            e(
-              "h2",
-              { className: "text-2xl font-bold mb-4 text-gray-800" },
-              `${selectedPlayer}'s Scores`
-            ),
-            e(
-              "div",
-              { className: "bg-blue-50 p-4 rounded-lg mb-4" },
-              e(
-                "div",
-                { className: "grid grid-cols-3 gap-4 text-center" },
-                e(
-                  "div",
-                  null,
-                  e(
-                    "div",
-                    { className: "text-2xl font-bold text-orange-500" },
-                    calculateStats(players[selectedPlayer]).average
-                  ),
-                  e("div", { className: "text-sm text-gray-600" }, "Average")
-                ),
-                e(
-                  "div",
-                  null,
-                  e(
-                    "div",
-                    { className: "text-2xl font-bold text-blue-500" },
-                    calculateStats(players[selectedPlayer]).gamesPlayed
-                  ),
-                  e("div", { className: "text-sm text-gray-600" }, "Games")
-                ),
-                e(
-                  "div",
-                  null,
-                  e(
-                    "div",
-                    { className: "text-2xl font-bold text-green-500" },
-                    calculateStats(players[selectedPlayer]).total
-                  ),
-                  e("div", { className: "text-sm text-gray-600" }, "Total")
-                )
-              )
-            ),
-            e(
-              "div",
-              { className: "space-y-2" },
-              getPlayerHistory(selectedPlayer).map(
-                ({ date, score, imageUrl, isAutoScored }) =>
-                  e(
-                    "div",
-                    {
-                      key: date,
-                      className: `flex items-center justify-between p-3 rounded-lg border transition-colors ${
-                        isAutoScored
-                          ? "bg-gray-100 border-gray-300 opacity-75 cursor-not-allowed"
-                          : "bg-white border-gray-200 hover:border-orange-300 cursor-pointer"
-                      }`,
-                      onClick: isAutoScored
-                        ? undefined
-                        : () => handleEditScore(selectedPlayer, date, score, imageUrl),
-                    },
-                    e(
-                      "div",
-                      { className: "flex items-center gap-3" },
-                      e(Calendar, { className: "w-5 h-5 text-gray-400" }),
-                      e(
-                        "div",
-                        { className: "flex items-center gap-2" },
-                        e(
-                          "span",
-                          { className: "font-medium text-gray-700" },
-                          new Date(date + "T00:00:00").toLocaleDateString(
-                            "en-US",
-                            {
-                              weekday: "short",
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            }
-                          )
-                        ),
-                        isAutoScored &&
-                          e(
-                            "span",
-                            {
-                              className:
-                                "text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded",
-                              title: "Auto-scored (missed day)",
-                            },
-                            "Missed"
-                          )
-                      ),
-                      imageUrl &&
-                        e(
-                          "span",
-                          {
-                            className:
-                              "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded cursor-pointer hover:bg-blue-200",
-                            title: "Click to view image",
-                            onClick: (e) => {
-                              e.stopPropagation();
-                              setViewingImage(imageUrl);
-                            },
-                          },
-                          "📷"
-                        )
-                    ),
-                    e(
-                      "div",
-                      { className: "flex items-center gap-3" },
-                      e(
-                        "div",
-                        { className: "flex items-center gap-2" },
-                        e(
-                          "span",
-                          {
-                            className: `text-xl font-bold ${
-                              isAutoScored
-                                ? "text-gray-500 line-through"
-                                : score <= 100
-                                ? "text-green-500"
-                                : score <= 300
-                                ? "text-yellow-500"
-                                : "text-red-500"
-                            }`,
-                          },
-                          score
-                        ),
-                        isAutoScored &&
-                          e(
-                            "span",
-                            {
-                              className: "text-xs text-gray-500 italic",
-                              title: "Auto-scored 900 for missed weekday",
-                            },
-                            "(auto)"
-                          )
-                      ),
-                      !isAutoScored &&
-                        e(
-                          "button",
-                          {
-                            onClick: (e) => {
-                              e.stopPropagation();
-                              deleteScore(selectedPlayer, date);
-                            },
-                            disabled: saving,
-                            className:
-                              "text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50",
-                          },
-                          "Delete"
-                        )
-                    )
-                  )
-              )
-            )
-          )
-      ),
-
-      showEditModal &&
-        editingScore &&
-        e(
-          "div",
-          {
-            className:
-              "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4",
-            onClick: () => setShowEditModal(false),
-          },
-          e(
-            "div",
-            {
-              className:
-                "bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto",
-              onClick: (e) => e.stopPropagation(),
-            },
-            e(
-              "div",
-              { className: "p-6" },
-              e(
-                "div",
-                { className: "flex items-center justify-between mb-4" },
-                e(
-                  "h2",
-                  { className: "text-2xl font-bold text-gray-800" },
-                  `Edit Grid - ${editingScore.name}`
-                ),
-                e(
-                  "button",
-                  {
-                    onClick: () => setShowEditModal(false),
-                    className:
-                      "text-gray-500 hover:text-gray-700 text-2xl font-bold",
-                  },
-                  "×"
-                )
-              ),
-              e(
-                "div",
-                { className: "mb-4" },
-                e(
-                  "label",
-                  { className: "block text-sm font-medium text-gray-700 mb-1" },
-                  "Date"
-                ),
-                e("input", {
-                  type: "date",
-                  value: editingScore.date,
-                  disabled: true,
-                  className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed",
-                })
-              ),
-              e(
-                "div",
-                { className: "mb-4" },
-                e(
-                  "label",
-                  { className: "block text-sm font-medium text-gray-700 mb-1" },
-                  "Score (0-900)"
-                ),
-                e("input", {
-                  type: "number",
-                  min: "0",
-                  max: "900",
-                  value: editingScore.score,
-                  onChange: (ev) =>
-                    setEditingScore({
-                      ...editingScore,
-                      score: ev.target.value,
-                    }),
-                  className:
-                    "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent",
-                })
-              ),
-              e(
-                "button",
-                {
-                  onClick: handleUpdateScore,
-                  disabled: saving,
-                  className:
-                    "w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 mb-4",
-                },
-                saving ? "Updating..." : "Update Score"
-              ),
-              e(
-                "div",
-                { className: "border-t pt-4" },
-                e(
-                  "h3",
-                  { className: "text-lg font-bold text-gray-800 mb-3" },
-                  "Grid Image"
-                ),
-                editingScore.imageUrl &&
-                  e(
-                    "div",
-                    { className: "mb-4" },
-                    e("img", {
-                      src: editingScore.imageUrl,
-                      alt: "Grid image",
-                      className:
-                        "w-full rounded-lg border border-gray-300 mb-2 cursor-pointer hover:opacity-90",
-                      onClick: () => setViewingImage(editingScore.imageUrl),
-                    }),
-                    e(
-                      "button",
-                      {
-                        onClick: handleDeleteImage,
-                        disabled: uploadingImage,
-                        className:
-                          "w-full bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50",
-                      },
-                      uploadingImage ? "Deleting..." : "Delete Image"
-                    )
-                  ),
-                e(
-                  "div",
-                  { className: "mb-4" },
-                  e(
-                    "label",
-                    {
-                      className: "block text-sm font-medium text-gray-700 mb-2",
-                    },
-                    "Upload Grid Image"
-                  ),
-                  e("input", {
-                    type: "file",
-                    accept: "image/*",
-                    onChange: (ev) => {
-                      const file = ev.target.files[0];
-                      if (file) {
-                        handleImageUpload(file);
-                      }
-                    },
-                    disabled: uploadingImage,
-                    className:
-                      "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent disabled:opacity-50",
-                  })
-                ),
-                uploadingImage &&
-                  e(
-                    "div",
-                    {
-                      className:
-                        "bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg mb-4",
-                    },
-                    "Uploading image..."
-                  ),
-                e(
-                  "p",
-                  { className: "text-xs text-gray-500 italic" },
-                  "Note: Only your top 9 scores plus today's score can have images. Uploading a new image may replace an existing one."
-                )
-              )
-            )
-          )
-        ),
-
-      viewingImage &&
-        e(
-          "div",
-          {
-            className:
-              "fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4",
-            onClick: () => setViewingImage(null),
-          },
-          e(
-            "div",
-            {
-              className: "relative max-w-4xl w-full",
-              onClick: (e) => e.stopPropagation(),
-            },
-            e(
-              "button",
-              {
-                onClick: () => setViewingImage(null),
-                className:
-                  "absolute top-4 right-4 bg-white text-gray-800 rounded-full w-10 h-10 flex items-center justify-center text-2xl font-bold hover:bg-gray-200 z-10 shadow-lg",
-              },
-              "×"
-            ),
-            e("img", {
-              src: viewingImage,
-              alt: "Grid image",
-              className: "w-full h-auto rounded-lg shadow-2xl",
-            })
-          )
-        ),
-
-      e(
-        "div",
-        { className: "text-center text-sm text-gray-600" },
-        e(
-          "p",
-          null,
-          "Track your Immaculate Grid scores with friends! Data synced via Supabase."
-        )
-      )
-    )
-  );
-};
-
-ReactDOM.render(e(ImmaculateGridTracker), document.getElementById("root"));
+  window.ImmaculateGridTracker = ImmaculateGridTracker;
+})();
