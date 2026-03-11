@@ -38,9 +38,10 @@
     return `${year}-${month}-${day}`;
   }
 
+  // Monday of the week that contains today (EST). So on Monday we get today; no previous week.
   function getWeekStartEST() {
-    const yesterday = getYesterdayEST();
-    const [y, m, d] = yesterday.split("-").map(Number);
+    const today = getTodayEST();
+    const [y, m, d] = today.split("-").map(Number);
     for (let offset = 0; offset < 7; offset++) {
       const checkDate = new Date(Date.UTC(y, m - 1, d - offset, 12, 0, 0));
       const formatter = new Intl.DateTimeFormat("en-US", {
@@ -54,7 +55,7 @@
         return `${ys}-${ms}-${ds}`;
       }
     }
-    return yesterday;
+    return today;
   }
 
   function getMonthStartEST() {
