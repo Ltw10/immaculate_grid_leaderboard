@@ -2,10 +2,13 @@
 // ⚠️ REPLACE THESE WITH YOUR SUPABASE PROJECT CREDENTIALS
 const SUPABASE_URL = "https://jvfcsemgypiexqeiuqax.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_Led1z5rXySTKSamM5QHnFA_DOVxdT3x";
+// PostgREST schema (must be listed under Project Settings → API → Exposed schemas)
+const SUPABASE_DB_SCHEMA = "immaculate_grid";
 
 // Helper function to make Supabase API requests
 const supabaseRequest = async (endpoint, options = {}) => {
   const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
+  const method = (options.method || "GET").toUpperCase();
   const headers = {
     "Content-Type": "application/json",
     apikey: SUPABASE_ANON_KEY,
@@ -13,6 +16,10 @@ const supabaseRequest = async (endpoint, options = {}) => {
     Prefer: "return=representation",
     ...options.headers,
   };
+  headers["Accept-Profile"] = SUPABASE_DB_SCHEMA;
+  if (!["GET", "HEAD"].includes(method)) {
+    headers["Content-Profile"] = SUPABASE_DB_SCHEMA;
+  }
 
   const response = await fetch(url, {
     ...options,

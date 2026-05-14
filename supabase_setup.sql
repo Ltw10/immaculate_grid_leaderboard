@@ -1,8 +1,17 @@
--- Supabase table setup for Immaculate Grid Tracker
--- Run this SQL in your Supabase SQL Editor
+-- Supabase setup for Immaculate Grid Tracker.
+-- Relational objects live in schema immaculate_grid. Storage bucket + object policies are appended
+-- at the end; Supabase requires those to remain in the storage.* catalog (not movable to immaculate_grid).
+-- Run this SQL in the Supabase SQL Editor for a NEW project (no existing public.scores).
+--
+-- Before the app can use REST: Dashboard → Project Settings → API → "Exposed schemas"
+-- → add: immaculate_grid → Save.
 
--- Create the scores table
-create table scores (
+create schema if not exists immaculate_grid;
+
+-- Supabase Data API: expose schema + objects (see https://supabase.com/docs/guides/api/using-custom-schemas)
+grant usage on schema immaculate_grid to anon, authenticated, service_role;
+
+create table immaculate_grid.scores (
   id uuid primary key default gen_random_uuid(),
   player_name text not null,
   score int not null,
@@ -12,48 +21,84 @@ create table scores (
   updated_at timestamp with time zone default now()
 );
 
--- Create an index on name and date for faster queries
-CREATE INDEX IF NOT EXISTS idx_scores_name_date ON scores(player_name, grid_date);
+comment on schema immaculate_grid is 'Immaculate Grid Leaderboard app (scores + trigger).';
+comment on table immaculate_grid.scores is 'Leaderboard rows; image_url targets Storage bucket grid-images.';
 
--- Create an index on date for sorting
-CREATE INDEX IF NOT EXISTS idx_scores_date ON scores(grid_date DESC);
+create index if not exists idx_scores_name_date
+  on immaculate_grid.scores (player_name, grid_date);
 
--- Enable Row Level Security (RLS)
-ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
+create index if not exists idx_scores_date
+  on immaculate_grid.scores (grid_date desc);
 
--- Create a policy that allows anyone to read scores
-CREATE POLICY "Allow public read access" ON scores
-  FOR SELECT
-  USING (true);
+grant select, insert, update, delete on immaculate_grid.scores to anon, authenticated, service_role;
 
--- Create a policy that allows anyone to insert scores
-CREATE POLICY "Allow public insert access" ON scores
-  FOR INSERT
-  WITH CHECK (true);
+alter table immaculate_grid.scores enable row level security;
 
--- Create a policy that allows anyone to update scores
-CREATE POLICY "Allow public update access" ON scores
-  FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
+create policy "Allow public read access" on immaculate_grid.scores
+  for select using (true);
 
--- Create a policy that allows anyone to delete scores
-CREATE POLICY "Allow public delete access" ON scores
-  FOR DELETE
-  USING (true);
+create policy "Allow public insert access" on immaculate_grid.scores
+  for insert with check (true);
 
--- Create a function to automatically update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+create policy "Allow public update access" on immaculate_grid.scores
+  for update using (true) with check (true);
 
--- Create a trigger to automatically update updated_at
-CREATE TRIGGER update_scores_updated_at
-  BEFORE UPDATE ON scores
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+create policy "Allow public delete access" on immaculate_grid.scores
+  for delete using (true);
 
+create or replace function immaculate_grid.update_updated_at_column()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+grant execute on function immaculate_grid.update_updated_at_column() to anon, authenticated, service_role;
+
+create trigger update_scores_updated_at
+  before update on immaculate_grid.scores
+  for each row
+  execute function immaculate_grid.update_updated_at_column();
+
+grant all on all tables in schema immaculate_grid to anon, authenticated, service_role;
+grant all on all routines in schema immaculate_grid to anon, authenticated, service_role;
+grant all on all sequences in schema immaculate_grid to anon, authenticated, service_role;
+
+alter default privileges for role postgres in schema immaculate_grid
+  grant all on tables to anon, authenticated, service_role;
+alter default privileges for role postgres in schema immaculate_grid
+  grant all on routines to anon, authenticated, service_role;
+alter default privileges for role postgres in schema immaculate_grid
+  grant all on sequences to anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- Storage (bucket + policies): required to stay in Supabase `storage` schema.
+-- The app uses bucket id `grid-images` (see js/storage.js). Not movable into
+-- immaculate_grid; included here so all project DB setup is one script.
+-- ---------------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('grid-images', 'grid-images', true)
+on conflict (id) do nothing;
+
+drop policy if exists "Allow public read access to grid images" on storage.objects;
+create policy "Allow public read access to grid images"
+on storage.objects for select
+using (bucket_id = 'grid-images');
+
+drop policy if exists "Allow public upload access to grid images" on storage.objects;
+create policy "Allow public upload access to grid images"
+on storage.objects for insert
+with check (bucket_id = 'grid-images');
+
+drop policy if exists "Allow public update access to grid images" on storage.objects;
+create policy "Allow public update access to grid images"
+on storage.objects for update
+using (bucket_id = 'grid-images')
+with check (bucket_id = 'grid-images');
+
+drop policy if exists "Allow public delete access to grid images" on storage.objects;
+create policy "Allow public delete access to grid images"
+on storage.objects for delete
+using (bucket_id = 'grid-images');

@@ -20,7 +20,8 @@ immaculate-grid-tracker/
 │   ├── app.js         # Main React component
 │   ├── storage.js     # Supabase API integration
 │   └── icons.js       # SVG icon components
-├── supabase_setup.sql # Database setup script
+├── supabase_setup.sql # New-project DB setup (schema immaculate_grid)
+├── supabase_migrate_public_to_immaculate_grid.sql # Move existing public.scores → immaculate_grid (keeps data)
 ├── SUPABASE_SETUP.md  # Detailed Supabase setup guide
 └── README.md          # This file
 ```
@@ -31,8 +32,11 @@ immaculate-grid-tracker/
 
 1. Create a free account at [supabase.com](https://supabase.com)
 2. Create a new project
-3. Go to **SQL Editor** and run the `supabase_setup.sql` script
-4. Get your credentials from **Project Settings** → **Data API & API Keys**:
+3. In **Project Settings** → **Data API** → **Exposed schemas**, add **`immaculate_grid`** and save
+4. Go to **SQL Editor**:
+   - **New empty project:** run `supabase_setup.sql`
+   - **Already have `public.scores` with data:** run `supabase_migrate_public_to_immaculate_grid.sql` once instead (do not run `supabase_setup.sql` after that)
+5. Get your credentials from **Project Settings** → **Data API & API Keys**:
    - Project URL
    - Publishable Key
 
@@ -41,10 +45,11 @@ For detailed instructions, see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md).
 ### Step 2: Configure the App
 
 1. Open `js/storage.js`
-2. Replace the placeholder values with your Supabase credentials:
+2. Replace the placeholder values with your Supabase credentials (and keep `SUPABASE_DB_SCHEMA` as `immaculate_grid` unless you chose a different schema name in Postgres):
    ```javascript
    const SUPABASE_URL = "https://xxxxx.supabase.co";
    const SUPABASE_ANON_KEY = "your-publishable-key-here";
+   const SUPABASE_DB_SCHEMA = "immaculate_grid";
    ```
 
 ### Step 3: Run Locally
@@ -102,14 +107,15 @@ All data is stored in your Supabase database, which means:
 
 ### "permission denied" Error
 
-- Make sure you ran the SQL setup script (`supabase_setup.sql`)
+- Make sure you ran `supabase_setup.sql` (new project) or `supabase_migrate_public_to_immaculate_grid.sql` (existing `public.scores`)
+- Confirm **`immaculate_grid`** is listed under **Exposed schemas** (Project Settings → Data API)
 - Verify that Row Level Security policies were created
 - Check the Supabase dashboard → Authentication → Policies
 
 ### Scores Not Appearing
 
 - Check the browser console (F12) for error messages
-- Verify the table was created: Go to Supabase → Table Editor → `scores` table
+- Verify the table: **Table Editor** → schema **`immaculate_grid`** → **`scores`**
 - Make sure the SQL script ran successfully
 
 ### CORS Errors

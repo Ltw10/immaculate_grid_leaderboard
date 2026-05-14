@@ -8,19 +8,18 @@ This guide will help you set up image uploads for grid scores.
 2. Run this SQL to add the `image_url` column to your scores table:
 
 ```sql
-ALTER TABLE scores ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE immaculate_grid.scores ADD COLUMN IF NOT EXISTS image_url text;
 ```
 
 Or if you haven't run the main setup script yet, the updated `supabase_setup.sql` already includes this column.
 
-## Step 2: Set Up Supabase Storage
+## Step 2: Set Up Supabase Storage (grid images)
 
-1. Go to your Supabase project → **SQL Editor**
-2. Run the SQL from `supabase_storage_setup.sql` to:
-   - Create a public storage bucket called `grid-images`
-   - Set up policies to allow public read/write access
+If you already ran **`supabase_setup.sql`** or **`supabase_migrate_public_to_immaculate_grid.sql`**, the **`grid-images`** bucket and `storage.objects` policies are already applied—skip this step.
 
-Alternatively, you can set it up manually:
+To add storage only to an existing project that already has **`immaculate_grid.scores`**, run **`supabase_storage_setup.sql`** in the SQL Editor (same content as the storage block at the end of the main setup scripts).
+
+Alternatively, create the bucket and policies manually:
 
 1. Go to **Storage** in your Supabase dashboard
 2. Click **New bucket**
